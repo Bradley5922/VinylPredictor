@@ -6,12 +6,38 @@
 //
 
 import SwiftUI
+import Supabase
+
+enum appRootViews {
+    case landing
+    case home
+}
+
+final class RootViewSelector: ObservableObject {
+    
+    @Published var currentRoot: appRootViews = .home
+    
+}
 
 @main
 struct VinylPredictorApp: App {
+    
+    @StateObject private var rootViewSelector: RootViewSelector = RootViewSelector()
+    
     var body: some Scene {
+        
         WindowGroup {
-            ContentView()
+            Group {
+                switch rootViewSelector.currentRoot {
+                case .landing:
+                    LandingPage()
+                    
+                case .home:
+                    HomeScreen()
+                }
+            }
+            .environmentObject(rootViewSelector)
+            
         }
     }
 }
