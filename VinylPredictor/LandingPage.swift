@@ -9,11 +9,26 @@ import SwiftUI
 import _AuthenticationServices_SwiftUI
 import Supabase
 
-struct LandingPage: View {
-    
-    @EnvironmentObject private var rootViewSelector: RootViewSelector
+struct rotatingDisk: View {
     
     @State var isDiskRotating: Bool = false
+    
+    var body: some View {
+        Image("Disk")
+            .shadow(radius: 10)
+        
+            .rotationEffect(Angle.degrees(isDiskRotating ? 360 : 0))
+            .animation(Animation.linear(duration: 20).repeatForever(autoreverses: false), value: isDiskRotating)
+            .onAppear {
+                isDiskRotating = true
+        }
+    }
+}
+
+struct LandingPage: View {
+    
+    @Binding var actAsHoldingView: Bool
+    @EnvironmentObject private var rootViewSelector: RootViewSelector
     
     var body: some View {
         ZStack() {
@@ -39,16 +54,10 @@ struct LandingPage: View {
                          .multilineTextAlignment(.center)
                  }
                  .padding()
+                 .opacity(actAsHoldingView ? 0 : 1)
+                 .animation(.easeOut(duration: 0.75), value: actAsHoldingView)
                 
-                
-                Image("Disk")
-                    .shadow(radius: 10)
-                
-                    .rotationEffect(Angle.degrees(isDiskRotating ? 360 : 0))
-                    .animation(Animation.linear(duration: 20).repeatForever(autoreverses: false), value: isDiskRotating)
-                    .onAppear {
-                        isDiskRotating = true
-                    }
+                rotatingDisk()
                 
                 Spacer()
                 
@@ -85,23 +94,16 @@ struct LandingPage: View {
                         }
                     }
                 }
-                .frame(width: .infinity, height: 65)
+                .frame(maxWidth: .infinity)
+                .frame(height: 60)
                 .padding()
+                .opacity(actAsHoldingView ? 0 : 1).disabled(actAsHoldingView ? true : false)
+                .animation(.easeOut(duration: 0.75), value: actAsHoldingView)
             }
-        }
-        .colorScheme(.dark)
-        .onAppear() {
-            let session = supabase.auth.currentSession
-            
-            if ((session) != nil) {
-                rootViewSelector.currentRoot = .home
-            }
-            
-            rootViewSelector.currentRoot = .landing
         }
     }
 }
 
-#Preview {
-    LandingPage()
-}
+//#Preview {
+//    LandingPage(actAsHoldingView: false)
+//}

@@ -8,35 +8,47 @@
 import SwiftUI
 import Supabase
 
+enum SelectedTab {
+    case main
+    case profile
+}
+
 struct HomeScreen: View {
     
     @EnvironmentObject private var rootViewSelector: RootViewSelector
+    @State private var selectedTab: SelectedTab = .main
     
     var body: some View {
         
         NavigationView() {
             VStack {
-                Button {
-                    Task {
-                        await signOut()
-                        rootViewSelector.currentRoot = .landing
-                    }
-                } label: {
-                    Text("Sign Out")
+                
+                TabView(selection: $selectedTab) {
+                    MainScreen()
+                        .tag(SelectedTab.main)
+                    
+                        .tabItem {
+                            Label("Menu", systemImage: "list.dash")
+                        }
+
+                    Profile()
+                        .tag(SelectedTab.profile)
+                    
+                        .tabItem {
+                            Label("Order", systemImage: "square.and.pencil")
+                        }
                 }
                 
-                Text("Hello, world!")
-                    .font(.largeTitle)
             }
-        }
-    }
-    
-    func signOut() async  {
-        do {
-            try await supabase.auth.signOut()
-        } catch {
-            // alert user
-            print(error.localizedDescription)
+            .toolbar {
+                // the tool bar item views are written in the relevant view file
+                switch selectedTab { // changing tool bar based on page
+                case .main:
+                    EmptyView()
+                case .profile:
+                    signOutToolBarItem()
+                }
+            }
         }
     }
 }
