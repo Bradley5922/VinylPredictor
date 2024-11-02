@@ -104,6 +104,9 @@ struct LandingPage: View {
     }
 }
 
-//#Preview {
-//    LandingPage(actAsHoldingView: false)
-//}
+#Preview {
+    @Previewable @State var isHoldingView: Bool = false
+    
+    LandingPage(actAsHoldingView: $isHoldingView)
+}
+

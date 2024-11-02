@@ -11,6 +11,7 @@ import Supabase
 enum appRootViews {
     case landing
     case home
+    case testing
 }
 
 final class RootViewSelector: ObservableObject {
@@ -30,6 +31,9 @@ struct VinylPredictorApp: App {
         WindowGroup {
             Group {
                 switch rootViewSelector.currentRoot {
+                case .testing:
+//                    TesterPage()
+                    EmptyView()
                 case .landing:
                     LandingPage(actAsHoldingView: $holdingViewShow)
                 case .home:
@@ -41,18 +45,22 @@ struct VinylPredictorApp: App {
             
             .onAppear { // if signed in, go straight to home page
                 // prevents the landing page flashing quickly if there is a session
-                DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                    Task {
-                        do {
-                            _ = try await supabase.auth.session
+                if (!(rootViewSelector.currentRoot == .testing)) {
+                    
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
+                        Task {
+                            do {
+                                _ = try await supabase.auth.session
+                                
+                                rootViewSelector.currentRoot = .home
+                            } catch {
+                                // No session, throws error
+                                print("Error: \(error.localizedDescription)")
+                            }
                             
-                            rootViewSelector.currentRoot = .home
-                        } catch {
-                            // No session, throws error
-                            print("Error: \(error.localizedDescription)")
+                            holdingViewShow = false
                         }
-                        
-                        holdingViewShow = false
+
                     }
                 }
             }

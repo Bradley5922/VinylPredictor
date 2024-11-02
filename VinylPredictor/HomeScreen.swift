@@ -35,17 +35,14 @@ struct HomeScreen: View {
                         .tag(SelectedTab.profile)
                     
                         .tabItem {
-                            Label("Order", systemImage: "square.and.pencil")
+                            Label("Profile", systemImage: "person.fill")
                         }
                 }
                 
             }
             .toolbar {
-                // the tool bar item views are written in the relevant view file
-                switch selectedTab { // changing tool bar based on page
-                case .main:
-                    EmptyView()
-                case .profile:
+                if selectedTab == .profile {
+                    // the tool bar item views are written in the relevant view file
                     signOutToolBarItem()
                 }
             }
