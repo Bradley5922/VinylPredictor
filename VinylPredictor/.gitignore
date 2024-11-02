@@ -1,6 +1,9 @@
 # Ignore keys.swift file
 **/KEYS
+# Ignore local dependencies
 SwiftyJSON-master/
+CarBode-Barcode-Scanner-For-SwiftUI-master/
+# Ignore macOS stuff
 .DS_Store
 
 # Xcode
