@@ -2,6 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs access to the camera, to be able to read barcodes to allow to add viynls to your collection faster.</string>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

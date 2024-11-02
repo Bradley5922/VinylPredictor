@@ -9,14 +9,17 @@ import SwiftUI
 import Supabase
 
 enum SelectedTab {
-    case main
+    case collection
     case profile
 }
 
 struct HomeScreen: View {
     
     @EnvironmentObject private var rootViewSelector: RootViewSelector
-    @State private var selectedTab: SelectedTab = .main
+    @State private var selectedTab: SelectedTab = .collection
+    
+    @State var isShowingBarcodeSheet: Bool = false
+    
     
     var body: some View {
         
@@ -24,8 +27,8 @@ struct HomeScreen: View {
             VStack {
                 
                 TabView(selection: $selectedTab) {
-                    MainScreen()
-                        .tag(SelectedTab.main)
+                    CollectionView(isShowingBarcodeSheet: $isShowingBarcodeSheet)
+                        .tag(SelectedTab.collection)
                     
                         .tabItem {
                             Label("Menu", systemImage: "list.dash")
@@ -41,10 +44,9 @@ struct HomeScreen: View {
                 
             }
             .toolbar {
-                if selectedTab == .profile {
-                    // the tool bar item views are written in the relevant view file
-                    signOutToolBarItem()
-                }
+                // the tool bar item views are written in the relevant view file
+                if selectedTab == .profile { signOutToolBarItem() }
+                if selectedTab == .collection { BarcodeScannerToolBarItem(isShowingBarcodeSheet: $isShowingBarcodeSheet) }
             }
         }
     }

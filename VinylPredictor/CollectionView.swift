@@ -17,6 +17,10 @@ func trimText(title: String) -> String {
 
 struct CollectionView: View {
     
+    @State private var path = NavigationPath()
+    @Binding var isShowingBarcodeSheet: Bool
+    @State var barcodeSearchResult: Album?
+    
     @State var loadingCollection: Bool = true
     @State var userCollection: [Album] = []
     
@@ -25,21 +29,13 @@ struct CollectionView: View {
     
     var body: some View {
         
-        NavigationStack {
+        NavigationStack(path: $path) {
             VStack {
                 if loadingCollection { // Show loading indicator while collection is loading
                     ProgressView()
                         .scaleEffect(2)
                 } else if userCollection.isEmpty { // No items in collection and not currently loading
-                    VStack(spacing: 8) {
-                        Text("No albums in collection")
-                            .font(.title)
-                            .foregroundStyle(.primary)
-                        Text("Search above to add albums")
-                            .font(.title3)
-                            .fontWeight(.light)
-                            .foregroundStyle(.secondary)
-                    }
+                    NoAlbumsInfo()
                 } else {
                     List(searchText.isEmpty ? userCollection : searchResults, id: \.id) { item in
                         NavigationLink(destination:
@@ -53,6 +49,19 @@ struct CollectionView: View {
             }
             .searchable(text: $searchText)
             .navigationTitle("Collection")
+            
+            // show barcode sheet when toolbar item clicked
+            .sheet(isPresented: $isShowingBarcodeSheet, content: {
+                BarcodeReaderSheet(path: $path, barcodeSearchResult: $barcodeSearchResult)
+            })
+            
+            .navigationDestination(for: String.self) { view in
+                if view == "DetailAlbumView" && barcodeSearchResult != nil {
+                    
+                    AlbumDetail(selected_album_id: barcodeSearchResult!.id, userCollection: $userCollection)
+                        .toolbar(.hidden, for: .tabBar)
+                }
+            }
         }
         
         .onAppear() {
@@ -85,6 +94,20 @@ struct CollectionView: View {
         return []
     }
 }
+
+struct BarcodeScannerToolBarItem: View {
+    
+    @Binding var isShowingBarcodeSheet: Bool
+    
+    var body: some View {
+        Button {
+            isShowingBarcodeSheet = true
+        } label: {
+            Image(systemName: "barcode.viewfinder")
+        }
+    }
+}
+
 
 
 struct AlbumDetail: View {
@@ -280,6 +303,20 @@ struct InCollection_Button: View {
                         .font(.headline)
                 )
                 .padding([.bottom])
+        }
+    }
+}
+
+struct NoAlbumsInfo: View {
+    var body: some View {
+        VStack(spacing: 8) {
+            Text("No albums in collection")
+                .font(.title)
+                .foregroundStyle(.primary)
+            Text("Search above to add albums")
+                .font(.title3)
+                .fontWeight(.light)
+                .foregroundStyle(.secondary)
         }
     }
 }

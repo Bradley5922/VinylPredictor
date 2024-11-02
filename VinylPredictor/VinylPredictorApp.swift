@@ -16,7 +16,7 @@ enum appRootViews {
 
 final class RootViewSelector: ObservableObject {
     
-    @Published var currentRoot: appRootViews = .landing
+    @Published var currentRoot: appRootViews = .home
     
 }
 
@@ -33,6 +33,7 @@ struct VinylPredictorApp: App {
                 switch rootViewSelector.currentRoot {
                 case .testing:
 //                    TesterPage()
+//                    BarcodeReaderSheet()
                     EmptyView()
                 case .landing:
                     LandingPage(actAsHoldingView: $holdingViewShow)
