@@ -239,6 +239,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				023F20DE2CCD183700399DA3 /* XCRemoteSwiftPackageReference "supabase-swift" */,
+				02D9DB142CD5BF7100682E14 /* XCLocalSwiftPackageReference "SwiftyJSON-master" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 023F20B12CCD175900399DA3 /* Products */;
@@ -640,6 +641,13 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		02D9DB142CD5BF7100682E14 /* XCLocalSwiftPackageReference "SwiftyJSON-master" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "SwiftyJSON-master";
+		};
+/* End XCLocalSwiftPackageReference section */
 
 /* Begin XCRemoteSwiftPackageReference section */
 		023F20DE2CCD183700399DA3 /* XCRemoteSwiftPackageReference "supabase-swift" */ = {
