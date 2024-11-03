@@ -15,38 +15,24 @@ enum SelectedTab {
 
 struct HomeScreen: View {
     
-    @EnvironmentObject private var rootViewSelector: RootViewSelector
+    @EnvironmentObject private var viewParameters: ViewParameters
+    
     @State private var selectedTab: SelectedTab = .collection
     
-    @State var isShowingBarcodeSheet: Bool = false
-    
-    
     var body: some View {
-        
-        NavigationView() {
-            VStack {
+        NavigationView {
+            TabView(selection: $selectedTab) {
+                CollectionView()
+                    .tag(SelectedTab.collection)
+                    .tabItem {
+                        Label("Collection", systemImage: "list.dash")
+                    }
                 
-                TabView(selection: $selectedTab) {
-                    CollectionView(isShowingBarcodeSheet: $isShowingBarcodeSheet)
-                        .tag(SelectedTab.collection)
-                    
-                        .tabItem {
-                            Label("Menu", systemImage: "list.dash")
-                        }
-
-                    Profile()
-                        .tag(SelectedTab.profile)
-                    
-                        .tabItem {
-                            Label("Profile", systemImage: "person.fill")
-                        }
-                }
-                
-            }
-            .toolbar {
-                // the tool bar item views are written in the relevant view file
-                if selectedTab == .profile { signOutToolBarItem() }
-                if selectedTab == .collection { BarcodeScannerToolBarItem(isShowingBarcodeSheet: $isShowingBarcodeSheet) }
+                Profile()
+                    .tag(SelectedTab.profile)
+                    .tabItem {
+                        Label("Profile", systemImage: "person.fill")
+                    }
             }
         }
     }

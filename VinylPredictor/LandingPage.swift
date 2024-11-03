@@ -28,7 +28,7 @@ struct rotatingDisk: View {
 struct LandingPage: View {
     
     @Binding var actAsHoldingView: Bool
-    @EnvironmentObject private var rootViewSelector: RootViewSelector
+    @EnvironmentObject private var viewParameters: ViewParameters
     
     var body: some View {
         ZStack() {
@@ -86,7 +86,7 @@ struct LandingPage: View {
                             )
                             
                             // Change root view
-                            rootViewSelector.currentRoot = .home
+                            viewParameters.currentRoot = .home
                             
                             
                         } catch {

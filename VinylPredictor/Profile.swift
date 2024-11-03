@@ -19,13 +19,13 @@ struct Profile: View {
 
 struct signOutToolBarItem: View {
     
-    @EnvironmentObject private var rootViewSelector: RootViewSelector
+    @EnvironmentObject private var viewParameters: ViewParameters
     
     var body: some View {
         Button {
             Task {
                 await signOut()
-                rootViewSelector.currentRoot = .landing
+                viewParameters.currentRoot = .landing
             }
         } label: {
             Text("Sign Out")

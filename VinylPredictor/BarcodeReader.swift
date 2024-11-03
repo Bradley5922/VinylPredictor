@@ -1,5 +1,5 @@
 //
-//  BarcodeReaderSheet.swift
+//  BarcodeReader.swift
 //  VinylPredictor
 //
 //  Created by Bradley Cable on 02/11/2024.
@@ -8,15 +8,20 @@
 import SwiftUI
 import CarBode
 import AVFoundation
+import Combine
 
-struct BarcodeReaderSheet: View {
+final class BarcodeViewDataStorage: ObservableObject, Observable {
+    @Published var path: NavigationPath = NavigationPath()
+    @Published var barcodeScanResult: Album?
+}
+
+
+struct BarcodeReader: View {
     
-    @Binding var path: NavigationPath
-    @Environment(\.dismiss) private var dismiss
+    @EnvironmentObject private var viewParameters: ViewParameters
     
+    @EnvironmentObject var barcodeViewData: BarcodeViewDataStorage
     @State private var scanningErrorAlert = false
-    
-    @Binding var barcodeSearchResult: Album?
     
     var body: some View {
         
@@ -43,9 +48,8 @@ struct BarcodeReaderSheet: View {
                             let foundAlbum = album.first!
                             print(foundAlbum.title, foundAlbum.id)
                             
-                            barcodeSearchResult = foundAlbum
-                            dismiss.callAsFunction()
-                            path.append("DetailAlbumView")
+                            barcodeViewData.barcodeScanResult = foundAlbum
+                            barcodeViewData.path.append("DetailAlbumView")
                         } else {
                             print("No albums found with that barcode")
                             scanningErrorAlert.toggle()

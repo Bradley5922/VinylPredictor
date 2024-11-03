@@ -14,23 +14,17 @@ enum appRootViews {
     case testing
 }
 
-final class RootViewSelector: ObservableObject {
-    
-    @Published var currentRoot: appRootViews = .home
-    
-}
-
 @main
 struct VinylPredictorApp: App {
     
     @State var holdingViewShow: Bool = true
-    @StateObject private var rootViewSelector: RootViewSelector = RootViewSelector()
+    @StateObject private var viewParameters: ViewParameters = ViewParameters()
     
     var body: some Scene {
         
         WindowGroup {
             Group {
-                switch rootViewSelector.currentRoot {
+                switch viewParameters.currentRoot {
                 case .testing:
 //                    TesterPage()
 //                    BarcodeReaderSheet()
@@ -42,18 +36,19 @@ struct VinylPredictorApp: App {
                 }
             }
             .colorScheme(.dark) // force dark mode
-            .environmentObject(rootViewSelector)
+            
+            .environmentObject(viewParameters)
             
             .onAppear { // if signed in, go straight to home page
                 // prevents the landing page flashing quickly if there is a session
-                if (!(rootViewSelector.currentRoot == .testing)) {
+                if (!(viewParameters.currentRoot == .testing)) {
                     
                     DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
                         Task {
                             do {
                                 _ = try await supabase.auth.session
                                 
-                                rootViewSelector.currentRoot = .home
+                                viewParameters.currentRoot = .home
                             } catch {
                                 // No session, throws error
                                 print("Error: \(error.localizedDescription)")
@@ -68,4 +63,8 @@ struct VinylPredictorApp: App {
             
         }
     }
+}
+
+final class ViewParameters: ObservableObject {
+    @Published var currentRoot: appRootViews = .home
 }
