@@ -10,6 +10,7 @@ import Supabase
 
 enum SelectedTab {
     case collection
+    case summary
     case profile
 }
 
@@ -25,7 +26,13 @@ struct HomeScreen: View {
                 CollectionView()
                     .tag(SelectedTab.collection)
                     .tabItem {
-                        Label("Collection", systemImage: "list.dash")
+                        Label("Collection", systemImage: "square.stack.3d.up.fill")
+                    }
+                
+                Summary()
+                    .tag(SelectedTab.summary)
+                    .tabItem {
+                        Label("Summary", systemImage: "list.bullet.rectangle.fill")
                     }
                 
                 Profile()

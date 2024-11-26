@@ -13,7 +13,7 @@
 		023F20E92CCD18FE00399DA3 /* Realtime in Frameworks */ = {isa = PBXBuildFile; productRef = 023F20E82CCD18FE00399DA3 /* Realtime */; };
 		023F20EB2CCD18FE00399DA3 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 023F20EA2CCD18FE00399DA3 /* Storage */; };
 		023F20ED2CCD18FE00399DA3 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 023F20EC2CCD18FE00399DA3 /* Supabase */; };
-		0243B9742CD7E5F00007F758 /* TempFile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0243B9732CD7E5F00007F758 /* TempFile.swift */; };
+		0243B96A2CD7D3BF0007F758 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 0243B9532CD7D3BF0007F758 /* .gitignore */; };
 		02A22BAC2CD6A49700FB9DC1 /* CarBode in Frameworks */ = {isa = PBXBuildFile; productRef = 02A22BAB2CD6A49700FB9DC1 /* CarBode */; };
 		02A22BB02CD6A67100FB9DC1 /* SwiftyJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 02A22BAF2CD6A67100FB9DC1 /* SwiftyJSON */; };
 /* End PBXBuildFile section */
@@ -39,7 +39,7 @@
 		023F20B02CCD175900399DA3 /* VinylPredictor.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = VinylPredictor.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		023F20C12CCD175B00399DA3 /* VinylPredictorTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VinylPredictorTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		023F20CB2CCD175B00399DA3 /* VinylPredictorUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = VinylPredictorUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
-		0243B9732CD7E5F00007F758 /* TempFile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TempFile.swift; sourceTree = "<group>"; };
+		0243B9532CD7D3BF0007F758 /* .gitignore */ = {isa = PBXFileReference; lastKnownFileType = text; path = .gitignore; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
@@ -109,7 +109,7 @@
 		023F20A72CCD175900399DA3 = {
 			isa = PBXGroup;
 			children = (
-				0243B9732CD7E5F00007F758 /* TempFile.swift */,
+				0243B9532CD7D3BF0007F758 /* .gitignore */,
 				023F20B22CCD175900399DA3 /* VinylPredictor */,
 				023F20C42CCD175B00399DA3 /* VinylPredictorTests */,
 				023F20CE2CCD175B00399DA3 /* VinylPredictorUITests */,
@@ -268,6 +268,7 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				0243B96A2CD7D3BF0007F758 /* .gitignore in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -292,7 +293,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				0243B9742CD7E5F00007F758 /* TempFile.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -454,6 +454,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = VinylPredictor/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs access to the camera, to be able to read barcodes to allow to add viynls to your collection faster.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "To allow ShazamKit to recognise songs when listening to viynl for long sessions.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -495,6 +497,8 @@
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = VinylPredictor/Info.plist;
+				INFOPLIST_KEY_NSCameraUsageDescription = "This app needs access to the camera, to be able to read barcodes to allow to add viynls to your collection faster.";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "To allow ShazamKit to recognise songs when listening to viynl for long sessions.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
