@@ -237,8 +237,10 @@ extension ShazamViewModel: SHSessionDelegate {
                 
                 // Update UI on the main thread
                 DispatchQueue.main.async {
-                    print("Most frequent song in last 30 seconds: \(updatedDetection)")
-                    self.detectedSongs.append(updatedDetection)
+                    withAnimation {
+                        print("Most frequent song in last 30 seconds: \(updatedDetection)")
+                        self.detectedSongs.append(updatedDetection)
+                    }
                 }
             } catch {
                 print("Failed to fetch metadata: \(error)")

@@ -14,6 +14,7 @@
 		023F20EB2CCD18FE00399DA3 /* Storage in Frameworks */ = {isa = PBXBuildFile; productRef = 023F20EA2CCD18FE00399DA3 /* Storage */; };
 		023F20ED2CCD18FE00399DA3 /* Supabase in Frameworks */ = {isa = PBXBuildFile; productRef = 023F20EC2CCD18FE00399DA3 /* Supabase */; };
 		0243B96A2CD7D3BF0007F758 /* .gitignore in Resources */ = {isa = PBXBuildFile; fileRef = 0243B9532CD7D3BF0007F758 /* .gitignore */; };
+		0274BFFC2CFF5CB900F8196A /* MarqueeText in Frameworks */ = {isa = PBXBuildFile; productRef = 0274BFFB2CFF5CB900F8196A /* MarqueeText */; };
 		02A22BAC2CD6A49700FB9DC1 /* CarBode in Frameworks */ = {isa = PBXBuildFile; productRef = 02A22BAB2CD6A49700FB9DC1 /* CarBode */; };
 		02A22BB02CD6A67100FB9DC1 /* SwiftyJSON in Frameworks */ = {isa = PBXBuildFile; productRef = 02A22BAF2CD6A67100FB9DC1 /* SwiftyJSON */; };
 /* End PBXBuildFile section */
@@ -81,6 +82,7 @@
 				023F20E72CCD18FE00399DA3 /* PostgREST in Frameworks */,
 				023F20E52CCD18FE00399DA3 /* Functions in Frameworks */,
 				02A22BB02CD6A67100FB9DC1 /* SwiftyJSON in Frameworks */,
+				0274BFFC2CFF5CB900F8196A /* MarqueeText in Frameworks */,
 				023F20ED2CCD18FE00399DA3 /* Supabase in Frameworks */,
 				023F20E32CCD18FE00399DA3 /* Auth in Frameworks */,
 				023F20EB2CCD18FE00399DA3 /* Storage in Frameworks */,
@@ -163,6 +165,7 @@
 				023F20EC2CCD18FE00399DA3 /* Supabase */,
 				02A22BAB2CD6A49700FB9DC1 /* CarBode */,
 				02A22BAF2CD6A67100FB9DC1 /* SwiftyJSON */,
+				0274BFFB2CFF5CB900F8196A /* MarqueeText */,
 			);
 			productName = VinylPredictor;
 			productReference = 023F20B02CCD175900399DA3 /* VinylPredictor.app */;
@@ -714,6 +717,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = 023F20DE2CCD183700399DA3 /* XCRemoteSwiftPackageReference "supabase-swift" */;
 			productName = Supabase;
+		};
+		0274BFFB2CFF5CB900F8196A /* MarqueeText */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 02F14C272CFE8ACF0023A114 /* XCLocalSwiftPackageReference "MarqueeText-master" */;
+			productName = MarqueeText;
 		};
 		02A22BAB2CD6A49700FB9DC1 /* CarBode */ = {
 			isa = XCSwiftPackageProductDependency;
