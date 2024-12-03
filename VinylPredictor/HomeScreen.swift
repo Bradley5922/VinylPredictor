@@ -10,6 +10,7 @@ import Supabase
 
 enum SelectedTab {
     case collection
+    case listening
     case summary
     case profile
 }
@@ -27,6 +28,12 @@ struct HomeScreen: View {
                     .tag(SelectedTab.collection)
                     .tabItem {
                         Label("Collection", systemImage: "square.stack.3d.up.fill")
+                    }
+                
+                Listening_Session()
+                    .tag(SelectedTab.listening)
+                    .tabItem {
+                        Label("Play Session", systemImage: "music.quarternote.3")
                     }
                 
                 Summary()

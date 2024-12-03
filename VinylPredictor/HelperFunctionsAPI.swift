@@ -8,18 +8,35 @@
 import SwiftyJSON
 import Foundation
 import SwiftUI
+import MusicKit
 
-func getJSONfromURL(URL_string: String) async -> Result<JSON, Error> {
+// modified from other applications of mine
+func getJSONfromURL(URL_string: String, authHeader: String) async -> Result<JSON, Error> {
     
     guard let url = URL(string: URL_string) else {
-        return .failure(NSError(domain: "Invalid URL", code: 0))
+        return .failure(NSError(domain: "Invalid URL", code: 0, userInfo: nil))
     }
     
+    // Create a URLRequest and set the Authorisation (American boo) header
+    var request = URLRequest(url: url)
+    request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+    
     do {
-        let (data, _) = try await URLSession.shared.data(from: url)
+        // Perform the network request
+        let (data, response) = try await URLSession.shared.data(for: request)
+        
+        // Check the HTTP response status
+        if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+            let error = NSError(domain: "HTTP Error", code: httpResponse.statusCode, userInfo: nil)
+            return .failure(error)
+        }
+        
+        // Parse the JSON data
         let json = try JSON(data: data)
         return .success(json)
+        
     } catch {
+        // Return any errors that occur during the request or parsing
         return .failure(error)
     }
 }
@@ -84,7 +101,7 @@ struct Album: Identifiable, Hashable, Comparable {
                         image
                             .resizable()
                             .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 10))
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
 
                     case .failure:
                         emptyImageView()
@@ -162,8 +179,9 @@ func separatedTitle(from text: String, separator: String = "-", maxLength: Int? 
 }
 
 func searchDiscogs(searchTerm: String) async -> Result<[Album], Error> {
-    let response = await getJSONfromURL(URL_string:
-                    "https://api.discogs.com/database/search?q=\(searchTerm)&type=master&format=album&per_page=10&key=\(DISCOGS_API_KEY)&secret=\(DISCOGS_API_SECRET)"
+    let response = await getJSONfromURL(
+        URL_string: "https://api.discogs.com/database/search?q=\(searchTerm)&type=master&format=album&per_page=10",
+        authHeader: "Discogs  key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)"
     )
     
     var searchResults: [Album] = []
@@ -184,8 +202,9 @@ func searchDiscogs(searchTerm: String) async -> Result<[Album], Error> {
 }
 
 func discogsFetch(id: Int) async -> Result<Album, Error> {
-    let response = await getJSONfromURL(URL_string:
-        "https://api.discogs.com/masters/\(id)?key=\(DISCOGS_API_KEY)&secret=\(DISCOGS_API_SECRET)"
+    let response = await getJSONfromURL(
+        URL_string: "https://api.discogs.com/masters/\(id)",
+        authHeader: "Discogs  key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)"
     )
     
     switch response {
@@ -196,6 +215,36 @@ func discogsFetch(id: Int) async -> Result<Album, Error> {
         return .failure(error)
     }
     
+}
+
+func AppleMusicFetch(searchTerm: String) async -> Result<MusicKit.Album, Error> {
+    print("Fetching Apple Music album metadata")
+    
+    do {
+        let musicAuthorizationStatus = await MusicAuthorization.request()
+        
+        if musicAuthorizationStatus != .authorized {
+            // required for Shazam to fetch Album to create listening history
+            return .failure(NSError(domain: "Authentication required", code: 401, userInfo: nil))
+        }
+        // Create a search request for albums matching the search term
+        var searchRequest = MusicCatalogSearchRequest(term: searchTerm, types: [MusicKit.Album.self])
+        searchRequest.limit = 10 // Fetch more results to increase chances of finding a full album
+                
+        // Perform the search
+        let response = try await searchRequest.response()
+        
+        // Filter out singles/EP
+        if let album = response.albums.first(where: { $0.isSingle == false }) {
+            print("Found full album: \(album)")
+            return .success(album)
+        } else {
+            return .failure(NSError(domain: "No full albums found", code: 404, userInfo: nil))
+        }
+        
+    } catch {
+        return .failure(error)
+    }
 }
 
 //struct TesterPage: View {

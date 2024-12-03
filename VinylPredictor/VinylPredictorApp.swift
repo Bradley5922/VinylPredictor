@@ -16,7 +16,7 @@ enum appRootViews {
 
 
 final class ViewParameters: ObservableObject {
-    @Published var currentRoot: appRootViews = .testing
+    @Published var currentRoot: appRootViews = .landing
 }
 
 

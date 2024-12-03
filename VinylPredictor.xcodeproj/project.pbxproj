@@ -250,6 +250,7 @@
 				023F20DE2CCD183700399DA3 /* XCRemoteSwiftPackageReference "supabase-swift" */,
 				02D9DB142CD5BF7100682E14 /* XCLocalSwiftPackageReference "SwiftyJSON-master" */,
 				02A22BAA2CD6A49700FB9DC1 /* XCLocalSwiftPackageReference "CarBode-Barcode-Scanner-For-SwiftUI-master" */,
+				02F14C272CFE8ACF0023A114 /* XCLocalSwiftPackageReference "MarqueeText-master" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 023F20B12CCD175900399DA3 /* Products */;
@@ -665,6 +666,10 @@
 		02D9DB142CD5BF7100682E14 /* XCLocalSwiftPackageReference "SwiftyJSON-master" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = "SwiftyJSON-master";
+		};
+		02F14C272CFE8ACF0023A114 /* XCLocalSwiftPackageReference "MarqueeText-master" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = "MarqueeText-master";
 		};
 /* End XCLocalSwiftPackageReference section */
 

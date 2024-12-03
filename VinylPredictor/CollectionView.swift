@@ -41,8 +41,6 @@ struct CollectionView: View {
                 
                 if userCollection.loading { // Show loading indicator while collection is loading
                     ProgressView().scaleEffect(2)
-                } else if userCollection.array.isEmpty { // No items in collection and not currently loading
-                    NoAlbumsInfo()
                 } else {
                     ListViewContent()
                 }
@@ -76,9 +74,9 @@ struct CollectionView: View {
 struct NoAlbumsInfo: View {
     
     var body: some View {
-        VStack(spacing: 8) {
+        VStack(alignment: .leading) {
             Text("No albums in collection")
-                .font(.title)
+                .font(.title2)
                 .foregroundStyle(.primary)
             Text("Search above to add albums")
                 .font(.title3)
@@ -98,6 +96,11 @@ struct ListViewContent: View {
     var body: some View {
         List {
             barcodeRowView()
+            
+            if userCollection.array.isEmpty && searchText.isEmpty {
+                NoAlbumsInfo()
+                    .listRowBackground(Color.yellow.opacity(0.5))
+            }
             
             ForEach(searchText.isEmpty ? userCollection.array : searchResults, id: \.id) { item in
                 NavigationLink(destination:

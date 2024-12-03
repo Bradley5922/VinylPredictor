@@ -24,31 +24,19 @@ struct ShazamTest: View {
                 .frame(width: 150, height: 150)
                 .padding(50)
             
-            Button {
-                Shazam.startListening()
-            } label: {
-                RoundedRectangle(cornerRadius: 8)
-                    .foregroundStyle(.green)
-                    .overlay {
-                        Text("Start Listening")
-                            .foregroundStyle(.white)
-                    }
-                    .frame(height: 50)
-            }
-            .padding()
+            Toggle("Start Listening", isOn: $Shazam.isListening)
             
-            Button {
-                Shazam.stopListening()
-            } label: {
-                RoundedRectangle(cornerRadius: 8)
-                    .foregroundStyle(.red)
-                    .overlay {
-                        Text("Stop Listening")
-                            .foregroundStyle(.white)
-                    }
-                    .frame(height: 50)
+            Text("**Detected Songs:**")
+                .bold()
+                .font(.headline)
+            
+            ForEach(Shazam.detectedSongs, id: \.self) { song in
+                VStack {
+                    Text(song.title)
+                    Text(song.artist)
+                    Text("Apple Music Data: \(song.album)")
+                }
             }
-            .padding()
         }
         .padding()
     }
