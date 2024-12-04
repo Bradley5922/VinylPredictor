@@ -48,6 +48,8 @@ struct Listening_Session: View {
                             }
                             .transition(AnyTransition.identity)
                         }
+                        .onDelete(perform: deleteSong)
+                        
                         .onChange(of: Shazam.detectedSongs) {
                             withAnimation {
                                 var updatedList = Shazam.detectedSongs
@@ -66,6 +68,7 @@ struct Listening_Session: View {
                         .foregroundStyle(Gradient(colors: [Color.black, Color.clear]))
                         .frame(height: 30)
                 }
+                
                 
 //                MARK: Used for testing
 //                Button(action: addNewSong) {
@@ -86,10 +89,28 @@ struct Listening_Session: View {
             
             .onDisappear() {
                 if Shazam.isListening == false {
-                    Shazam.detectedSongs.removeAll()
+                    print("Updating Supabase with listening values")
+                    
+                    Task {
+                        for detection in Shazam.detectedSongs {
+                            let result = await updateListeningHistory(
+                                album_name: detection.album,
+                                artist_name: detection.artist,
+                                listening_hours: Int(detection.duration)
+                            )
+                            
+                            print(result)
+                        }
+                        // Clear the list after updates are done
+                        Shazam.detectedSongs.removeAll()
+                    }
                 }
             }
         }
+    }
+    
+    private func deleteSong(at offsets: IndexSet) {
+        Shazam.detectedSongs.remove(atOffsets: offsets)
     }
     
 //    MARK: Used for testing
@@ -129,9 +150,9 @@ struct NowPlaying: View {
                 )
             
                 .overlay {
-                    let artwork = Shazam.detectedSongs.last?.image
-                    let title = Shazam.detectedSongs.last?.title
-                    let album = Shazam.detectedSongs.last?.album?.title
+                    let artwork = Shazam.nowPlayingSong?.image
+                    let title = Shazam.nowPlayingSong?.title
+                    let album = Shazam.nowPlayingSong?.album
                     
                     GeometryReader { geometry in
                         HStack(alignment: .center) {
@@ -151,7 +172,7 @@ struct NowPlaying: View {
                             .shadow(radius: 8)
                             .padding(.trailing, 8)
                             
-                            if Shazam.detectedSongs.isEmpty {
+                            if Shazam.nowPlayingSong == nil {
                                 VStack(alignment: .leading) {
                                     Text("Waiting for a song...")
                                         .bold()
@@ -194,7 +215,7 @@ struct NowPlaying: View {
                         .onChange(of: Shazam.isListening) {
                             animateOffset()
                         }
-                        .onChange(of: Shazam.detectedSongs.last) {
+                        .onChange(of: Shazam.nowPlayingSong) {
                             animateOffset()
                         }
                     }
@@ -220,7 +241,7 @@ struct NowPlaying: View {
     }
     
     private func animateOffset() {
-        if Shazam.isListening && Shazam.detectedSongs.isEmpty == false {
+        if Shazam.isListening && Shazam.nowPlayingSong != nil {
             // Reset offset to trigger a smoother animation
             withAnimation(.easeInOut(duration: 1.25)) {
                 offset = 35

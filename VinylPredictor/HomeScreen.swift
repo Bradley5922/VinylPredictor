@@ -36,7 +36,7 @@ struct HomeScreen: View {
                         Label("Play Session", systemImage: "music.quarternote.3")
                     }
                 
-                Summary()
+                StatsTest()
                     .tag(SelectedTab.summary)
                     .tabItem {
                         Label("Summary", systemImage: "list.bullet.rectangle.fill")

@@ -14,13 +14,13 @@ import MusicKit
 
 struct DetectedSong: Identifiable, Hashable {
     let id: String
+    
     let artist: String
     let title: String
+    let album: String
     
-    var album: MusicKit.Album? // Updated asynchronously, only added for final detection
-    
+    let duration: TimeInterval
     let artworkURL: URL?
-    
     
     var image: some View {
         
@@ -51,13 +51,16 @@ struct DetectedSong: Identifiable, Hashable {
         }
     }
     
-    init(id: String?, artist: String?, title: String?, artworkURL: URL?, album: MusicKit.Album? = nil) {
+    init(id: String?, artist: String?, title: String?, album: String?,
+         duration: TimeInterval?, artworkURL: URL?) {
         self.id = id ?? ""
+        
         self.artist = artist ?? ""
         self.title = title ?? ""
+        self.album = album ?? ""
         
+        self.duration = duration ?? 0
         self.artworkURL = artworkURL
-        self.album = album
     }
 }
 
@@ -66,9 +69,12 @@ class ShazamViewModel: NSObject, ObservableObject {
     private let audioEngine = AVAudioEngine()
     
     @Published var detectedSongs: [DetectedSong] = []
+    @Published var nowPlayingSong: DetectedSong?
+    
     @Published var isListening: Bool = false
     
-    private var timer: Timer? // Timer to evaluate buffered detections
+    private var tracklist_timer: Timer? // Timer to evaluate buffered detections
+    private var now_playing_timer: Timer? // Timer to evaluate buffered detections
     private var bufferedDetections: [DetectedSong] = []
     
     private var cancellable: AnyCancellable? // Store Combine subscription, listening object
@@ -94,20 +100,28 @@ class ShazamViewModel: NSObject, ObservableObject {
         
     deinit {
         // Cancel listeners and timers (for function fires)
-        timer?.invalidate()
+        now_playing_timer?.invalidate()
+        tracklist_timer?.invalidate()
         cancellable?.cancel()
     }
 
     // functions to start and stop buffer checks
     private func startTimer() {
-        timer = Timer.scheduledTimer(withTimeInterval: 10, repeats: true) { [weak self] _ in
-            self?.processBufferedDetections()
+        now_playing_timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
+            self?.processBufferedDetections(nowPlayingUpdate: true)
+        }
+        
+        tracklist_timer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
+            self?.processBufferedDetections(nowPlayingUpdate: false)
         }
     }
 
     private func stopTimer() {
-        timer?.invalidate()
-        timer = nil
+        now_playing_timer?.invalidate()
+        tracklist_timer?.invalidate()
+        
+        now_playing_timer = nil
+        tracklist_timer = nil
     }
 
     func startListening() {
@@ -191,9 +205,13 @@ extension ShazamViewModel: SHSessionDelegate {
         }
         
         let song: DetectedSong = DetectedSong(
-            id: firstMatch.isrc,
+            id: firstMatch.appleMusicID,
+            
             artist: firstMatch.artist,
             title: firstMatch.title,
+            album: firstMatch.songs.first?.albumTitle,
+            
+            duration: firstMatch.songs.first?.duration,
             artworkURL: firstMatch.artworkURL
         )
         
@@ -205,50 +223,31 @@ extension ShazamViewModel: SHSessionDelegate {
         
     }
     
-    func processBufferedDetections() {
-        print("Processing buffered detections... (30 seconds passed)")
-        
-        // Determine the most frequent song
-        guard let mostFrequentSong = mostFrequentSong(array: bufferedDetections) else {
-            bufferedDetections.removeAll()
-            return
-        }
-        
-        // Check if the song has already been detected
-        if self.detectedSongs.contains(where: { $0.id == mostFrequentSong.id }) {
-            print("Song already detected, skipping...")
-            bufferedDetections.removeAll()
-            return
-        }
-        
-        // Fetch metadata from Apple Music
-        Task {
-            do {
-                let result = await AppleMusicFetch(searchTerm: "\(mostFrequentSong.title) - \(mostFrequentSong.artist)")
-                
-                // Create a new immutable due to concurrency (see swift 6)
-                let updatedDetection: DetectedSong = DetectedSong(
-                    id: mostFrequentSong.id,
-                    artist: mostFrequentSong.artist,
-                    title: mostFrequentSong.title,
-                    artworkURL: mostFrequentSong.artworkURL,
-                    album: try result.get()
-                )
-                
-                // Update UI on the main thread
+    func processBufferedDetections(nowPlayingUpdate: Bool) {
+        print("Processing buffered detections... (10 seconds passed) [Now playing update?: \(nowPlayingUpdate)]")
+
+        if let mostFrequentSong = mostFrequentSong(array: bufferedDetections) {
+            if self.detectedSongs.contains(where: { $0.id == mostFrequentSong.id }) {
+                print("Song already detected, skipping...")
+            } else {
                 DispatchQueue.main.async {
                     withAnimation {
-                        print("Most frequent song in last 30 seconds: \(updatedDetection)")
-                        self.detectedSongs.append(updatedDetection)
+                        
+                        // update tracklist less frequently with more buffer
+                        if !nowPlayingUpdate {
+                            print("\nUpdating tracklist...")
+                            print("\t=> \(mostFrequentSong.title) - \(mostFrequentSong.artist)")
+                            
+                            self.detectedSongs.append(mostFrequentSong)
+                            self.bufferedDetections.removeAll()
+                        }
+                        self.nowPlayingSong = mostFrequentSong
                     }
                 }
-            } catch {
-                print("Failed to fetch metadata: \(error)")
             }
         }
-        
-        bufferedDetections.removeAll()
     }
+    
     // helper function, counts most common in array - modified from stack overflow (https://stackoverflow.com/a/38416464)
     func mostFrequentSong(array: [DetectedSong]) -> DetectedSong? {
         var counts = [String: Int]()
@@ -256,7 +255,7 @@ extension ShazamViewModel: SHSessionDelegate {
         array.forEach { counts[$0.id] = (counts[$0.id] ?? 0) + 1 }
 
         // Find the ID with the maximum count
-        if let (mostFrequentId, count) = counts.max(by: { $0.value < $1.value }) {
+        if let (mostFrequentId, _) = counts.max(by: { $0.value < $1.value }) {
             // Find the corresponding DetectedSong for the most frequent ID
             if let mostFrequentSong = array.first(where: { $0.id == mostFrequentId }) {
                 return mostFrequentSong
@@ -272,3 +271,30 @@ extension ShazamViewModel: SHSessionDelegate {
 
     }
 }
+
+// Changed implementation not needed, could get data straight from Shazam response
+// Fetch metadata from Apple Music
+//Task {
+//    do {
+//        let result = await AppleMusicFetch(searchTerm: "\(mostFrequentSong.title) - \(mostFrequentSong.artist)")
+//        
+//        // Create a new immutable due to concurrency (see swift 6)
+//        let updatedDetection: DetectedSong = DetectedSong(
+//            id: mostFrequentSong.id,
+//            artist: mostFrequentSong.artist,
+//            title: mostFrequentSong.title,
+//            artworkURL: mostFrequentSong.artworkURL,
+//            album: try result.get()
+//        )
+//        
+//        // Update UI on the main thread
+//        DispatchQueue.main.async {
+//            withAnimation {
+//                print("Most frequent song in last 30 seconds: \(updatedDetection)")
+//                self.detectedSongs.append(updatedDetection)
+//            }
+//        }
+//    } catch {
+//        print("Failed to fetch metadata: \(error)")
+//    }
+//}
