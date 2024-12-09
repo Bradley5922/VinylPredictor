@@ -91,6 +91,9 @@ struct Listening_Session: View {
                 if Shazam.isListening == false {
                     print("Updating Supabase with listening values")
                     
+                    //gets the last song played basically
+                    Shazam.processBufferedDetections()
+                    
                     Task {
                         for detection in Shazam.detectedSongs {
                             let result = await updateListeningHistory(
@@ -99,7 +102,7 @@ struct Listening_Session: View {
                                 listening_hours: Int(detection.duration)
                             )
                             
-                            print(result)
+                            print("Updated user listening history: \(result)")
                         }
                         // Clear the list after updates are done
                         Shazam.detectedSongs.removeAll()

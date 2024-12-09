@@ -74,7 +74,6 @@ class ShazamViewModel: NSObject, ObservableObject {
     @Published var isListening: Bool = false
     
     private var tracklist_timer: Timer? // Timer to evaluate buffered detections
-    private var now_playing_timer: Timer? // Timer to evaluate buffered detections
     private var bufferedDetections: [DetectedSong] = []
     
     private var cancellable: AnyCancellable? // Store Combine subscription, listening object
@@ -100,27 +99,19 @@ class ShazamViewModel: NSObject, ObservableObject {
         
     deinit {
         // Cancel listeners and timers (for function fires)
-        now_playing_timer?.invalidate()
         tracklist_timer?.invalidate()
         cancellable?.cancel()
     }
 
     // functions to start and stop buffer checks
     private func startTimer() {
-        now_playing_timer = Timer.scheduledTimer(withTimeInterval: 15, repeats: true) { [weak self] _ in
-            self?.processBufferedDetections(nowPlayingUpdate: true)
-        }
-        
         tracklist_timer = Timer.scheduledTimer(withTimeInterval: 45, repeats: true) { [weak self] _ in
-            self?.processBufferedDetections(nowPlayingUpdate: false)
+            self?.processBufferedDetections()
         }
     }
 
     private func stopTimer() {
-        now_playing_timer?.invalidate()
         tracklist_timer?.invalidate()
-        
-        now_playing_timer = nil
         tracklist_timer = nil
     }
 
@@ -219,29 +210,30 @@ extension ShazamViewModel: SHSessionDelegate {
         
         // buffer the detections, so we can be more confident about the results
         // especially songs with long intros
+        DispatchQueue.main.async {
+            withAnimation {
+                self.nowPlayingSong = song
+            }
+        }
+        
         bufferedDetections.append(song)
         
     }
     
-    func processBufferedDetections(nowPlayingUpdate: Bool) {
-        print("Processing buffered detections... (10 seconds passed) [Now playing update?: \(nowPlayingUpdate)]")
+    func processBufferedDetections() {
+        print("Processing buffered detections... (45 seconds passed)")
 
         if let mostFrequentSong = mostFrequentSong(array: bufferedDetections) {
             if self.detectedSongs.contains(where: { $0.id == mostFrequentSong.id }) {
                 print("Song already detected, skipping...")
             } else {
+                print("\nUpdating tracklist...")
+                print("\t=> \(mostFrequentSong.title) - \(mostFrequentSong.artist)")
+                
                 DispatchQueue.main.async {
                     withAnimation {
-                        
-                        // update tracklist less frequently with more buffer
-                        if !nowPlayingUpdate {
-                            print("\nUpdating tracklist...")
-                            print("\t=> \(mostFrequentSong.title) - \(mostFrequentSong.artist)")
-                            
-                            self.detectedSongs.append(mostFrequentSong)
-                            self.bufferedDetections.removeAll()
-                        }
-                        self.nowPlayingSong = mostFrequentSong
+                        self.detectedSongs.append(mostFrequentSong)
+                        self.bufferedDetections.removeAll()
                     }
                 }
             }

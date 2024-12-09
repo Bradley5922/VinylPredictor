@@ -22,32 +22,30 @@ struct HomeScreen: View {
     @State private var selectedTab: SelectedTab = .collection
     
     var body: some View {
-        NavigationView {
-            TabView(selection: $selectedTab) {
-                CollectionView()
-                    .tag(SelectedTab.collection)
-                    .tabItem {
-                        Label("Collection", systemImage: "square.stack.3d.up.fill")
-                    }
-                
-                Listening_Session()
-                    .tag(SelectedTab.listening)
-                    .tabItem {
-                        Label("Play Session", systemImage: "music.quarternote.3")
-                    }
-                
-                StatsTest()
-                    .tag(SelectedTab.summary)
-                    .tabItem {
-                        Label("Summary", systemImage: "list.bullet.rectangle.fill")
-                    }
-                
-                Profile()
-                    .tag(SelectedTab.profile)
-                    .tabItem {
-                        Label("Profile", systemImage: "person.fill")
-                    }
-            }
+        TabView(selection: $selectedTab) {
+            CollectionView()
+                .tag(SelectedTab.collection)
+                .tabItem {
+                    Label("Collection", systemImage: "square.stack.3d.up.fill")
+                }
+            
+            Listening_Session()
+                .tag(SelectedTab.listening)
+                .tabItem {
+                    Label("Play Session", systemImage: "music.quarternote.3")
+                }
+            
+            StatsTest()
+                .tag(SelectedTab.summary)
+                .tabItem {
+                    Label("Summary", systemImage: "list.bullet.rectangle.fill")
+                }
+            
+            Profile()
+                .tag(SelectedTab.profile)
+                .tabItem {
+                    Label("Profile", systemImage: "person.fill")
+                }
         }
     }
 }

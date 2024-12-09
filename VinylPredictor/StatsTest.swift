@@ -14,12 +14,14 @@ struct StatsTest: View {
     
     var body: some View {
         
-        VStack {
+        VStack(alignment: .leading) {
             Text("StatsTest")
                 .font(.largeTitle)
                 .bold()
             
             if let stats = stats {
+                Text("**Total Listening Time:** \(stats.overall)")
+                
                 Text("Top Artists:")
                     .bold()
                 

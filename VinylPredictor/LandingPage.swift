@@ -78,19 +78,21 @@ struct LandingPage: View {
                             }
                             
                             // create user in Supabase User Table
-                            try await supabase.auth.signInWithIdToken(
+                            let response = try await supabase.auth.signInWithIdToken(
                                 credentials: .init(
                                     provider: .apple,
                                     idToken: idToken
                                 )
                             )
                             
+                            print("User Creation Response: \(response)")
+                            
                             // Change root view
                             viewParameters.currentRoot = .home
                             
                             
                         } catch {
-                            dump(error)
+                            print(error)
                         }
                     }
                 }
