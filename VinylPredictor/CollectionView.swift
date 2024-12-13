@@ -111,7 +111,7 @@ struct ListViewContent: View {
                 }
             }
         }
-        .searchable(text: $searchText)
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
         
         .onChange(of: searchText) {
             Task {
@@ -171,6 +171,10 @@ struct rowView: View {
 
 struct AlbumDetail: View {
     
+    /// checking if this view has been access outside of the collection view
+    /// In collection button not needed in said case (AlbumCollectionModel would be missing as an ancestor of this view)
+    var accessed_via_collection_search: Bool? = true
+    
     @EnvironmentObject var userCollection: AlbumCollectionModel
     
     let selectedAlbumID: Int
@@ -188,9 +192,11 @@ struct AlbumDetail: View {
                 VStack {
                     Spacer()
                     
-                    InCollectionButton(selectedAlbum: selectedAlbum)
-                        .padding()
-                        .background(.thickMaterial)
+                    if accessed_via_collection_search ?? true {
+                        InCollectionButton(selectedAlbum: selectedAlbum)
+                            .padding()
+                            .background(.thickMaterial)
+                    }
                 }
             }
         } else {
@@ -198,9 +204,15 @@ struct AlbumDetail: View {
                 .scaleEffect(2)
                 .onAppear {
                     Task {
-                        if case .success(let album) = await discogsFetch(id: selectedAlbumID) {
+                        print("Selected album ID: \(selectedAlbumID)")
+                        
+                        let album_data = await discogsFetch(id: selectedAlbumID)
+                        switch album_data {
+                        case .success(let album):
                             selectedAlbum = album
-                        } else {
+                        case .failure(let error):
+                            print(error)
+                            // add error alert
                             dismiss()
                         }
                     }
@@ -239,7 +251,7 @@ struct AlbumHeaderView: View {
 
     var body: some View {
         Group {
-            album.image
+            pictureAsyncFetch(url: album.cover_image_URL)
                 .frame(width: 275, height: 275)
 
             Text(album.title)
@@ -287,17 +299,17 @@ struct InCollectionButton: View {
     var body: some View {
         Button {
             Task {
-                var request: Result<Any, any Error>
+                var request: Result<CollectionItem?, any Error>
                 
                 if !userCollection.inCollection(selectedAlbum) {
-                    request = await addToCollection(discogs_id: selectedAlbum.id)
+                    request = await addToCollection(album: selectedAlbum)
                 } else {
                     request = await removeFromCollection(discogs_id: selectedAlbum.id)
                 }
                 
                 switch request {
                 case .success(let result):
-                    print("Added/Removed from Collection: \(result)")
+                    print("Added/Removed from Collection: \(String(describing: result))")
                     
                     if userCollection.inCollection(selectedAlbum) {
                         // was in collection, now removed, so therefore remove it locally

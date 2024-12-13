@@ -74,7 +74,7 @@ struct TopAlbumBox: View {
                     
                     Spacer()
                     
-                    album.image
+                    pictureAsyncFetch(url: album.cover_image_URL)
                         .frame(width: 110, height: 110)
                         .overlay {
                             ZStack {
@@ -124,7 +124,7 @@ struct LowAlbumBox: View {
                     
                     Spacer()
                     
-                    album.image
+                    pictureAsyncFetch(url: album.cover_image_URL)
                         .frame(width: 110, height: 110)
                         .overlay {
                             ZStack {

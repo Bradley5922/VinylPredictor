@@ -10,7 +10,7 @@ import _PhotosUI_SwiftUI
 
 struct Profile: View {
     
-    @StateObject var profile_metadata = ProfileMetadata()
+    @StateObject var profile_metadata: ProfileMetadata = ProfileMetadata()
 
     var emailPrefix: String {
         if let email = supabase.auth.currentSession?.user.email,
@@ -80,7 +80,9 @@ struct Profile: View {
                 }
             }
         }
+        .environmentObject(profile_metadata)
     }
+
 }
 
 struct ProfilePicture: View {
@@ -130,42 +132,39 @@ struct ProfilePicture: View {
                     .resizable()
                     .scaledToFill()
             } else {
-                profilePictureAsyncFetch(url: profile_metadata.profile_picture_url)
+                pictureAsyncFetch(
+                    url: profile_metadata.profile_picture_url ?? profile_metadata.gravatar_url,
+                    profile_picture: true
+                )
             }
         }
         .buttonStyle(.plain)
     }
 }
 
-struct profilePictureAsyncFetch: View {
+struct pictureAsyncFetch: View {
     
     var url: URL?
+    var profile_picture: Bool? = false
     
     var body: some View {
-        if url == nil {
-            Image(systemName: "person.fill")
-                .font(.system(size: 50))
-                .padding()
-        } else {
-            
-            AsyncImage(url: url) { phase in
-                switch phase {
-                case .success(let image):
-                    image
-                        .resizable()
-                        .scaledToFill()
-                case .empty:
-                    // Show a spinner while loading
-                    ProgressView()
-                        .scaleEffect(2)
-                default:
-                    Image(systemName: "person.fill")
-                        .font(.system(size: 50))
-                        .padding()
-                }
+        AsyncImage(url: url) { phase in
+            switch phase {
+            case .success(let image):
+                image
+                    .resizable()
+                    .scaledToFill()
+            case .empty:
+                Image(systemName: "photo.fill")
+                    .font(.system(size: 50))
+                    .padding()
+            default:
+                // Show a spinner while loading
+                ProgressView()
+                    .scaleEffect(2)
             }
-            .id(url)
         }
+        .id(url)
     }
 }
 

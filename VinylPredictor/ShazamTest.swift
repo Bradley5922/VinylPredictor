@@ -30,11 +30,11 @@ struct ShazamTest: View {
                 .bold()
                 .font(.headline)
             
-            ForEach(Shazam.detectedSongs, id: \.self) { song in
+            ForEach(Shazam.detectedSongs) { song in
                 VStack {
-                    Text(song.title)
-                    Text(song.artist)
-                    Text("Apple Music Data: \(song.album)")
+                    Text(song.appleMusic.title)
+                    Text(song.album_title())
+//                    Text("Apple Music Data: \(song.album)")
                 }
             }
         }

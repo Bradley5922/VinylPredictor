@@ -89,34 +89,8 @@ struct Album: Identifiable, Hashable, Comparable {
     
     var trackList: [Track]?
     
-    private var cover_image_URL: String?
-    
-    var image: some View {
-        
-        Group {
-            if let validImagePath = cover_image_URL {
-                AsyncImage(url: URL(string: validImagePath)) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 8))
+    var cover_image_URL: URL?
 
-                    case .failure:
-                        emptyImageView()
-                    case .empty:
-                        emptyImageView()
-                    @unknown default:
-                        emptyImageView()
-                    }
-                }
-            } else {
-                emptyImageView()
-            }
-        }
-    }
-    
     func trimTitle(title: String) -> String {
         let trimmedTitle = title.count > 32 ? String(title.prefix(32)) + "..." : title
         
@@ -133,7 +107,7 @@ struct Album: Identifiable, Hashable, Comparable {
             self.artist = json["artists"][0]["name"].stringValue
             self.release_year = json["year"].stringValue
             self.styles = json["styles"].arrayValue.map { $0.stringValue }
-            self.cover_image_URL = json["images"][0]["uri"].string
+            self.cover_image_URL = json["images"][0]["uri"].url
             
             var tempTracklist: [Track] = []
             
@@ -156,7 +130,7 @@ struct Album: Identifiable, Hashable, Comparable {
             
             self.release_year = json["year"].stringValue
             self.styles = json["style"].arrayValue.map { $0.stringValue }
-            self.cover_image_URL = json["cover_image"].string
+            self.cover_image_URL = json["cover_image"].url
         }
     }
 
@@ -180,7 +154,7 @@ func separatedTitle(from text: String, separator: String = "-", maxLength: Int? 
 
 func searchDiscogs(searchTerm: String) async -> Result<[Album], Error> {
     let response = await getJSONfromURL(
-        URL_string: "https://api.discogs.com/database/search?q=\(searchTerm)&type=master&format=album&per_page=10",
+        URL_string: "https://api.discogs.com/database/search?q=\(searchTerm)&type=master&format=Vinyl&per_page=20",
         authHeader: "Discogs  key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)"
     )
     

@@ -11,58 +11,52 @@ import ShazamKit
 import SwiftUI
 import Combine
 import MusicKit
+import Fuse // allows for fuzzy searching
 
 struct DetectedSong: Identifiable, Hashable {
-    let id: String
+    let id: UUID // Apple Music ID
     
-    let artist: String
-    let title: String
-    let album: String
+    struct AppleMusic: Hashable {
+        let artist: String
+        let title: String
+        let album: String
+        let duration: TimeInterval
+        let artworkURL: URL
+    }
     
-    let duration: TimeInterval
-    let artworkURL: URL?
+    let appleMusic: AppleMusic
+    var discogsAlbum: Album?
     
-    var image: some View {
-        
-        Group {
-            if let artworkURL = artworkURL {
-                AsyncImage(url: artworkURL) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .scaledToFit()
-                            .clipShape(RoundedRectangle(cornerRadius: 4))
-
-                    case .failure:
-                        RoundedRectangle(cornerRadius: 4)
-                            .foregroundStyle(.background.secondary)
-                    case .empty:
-                        RoundedRectangle(cornerRadius: 4)
-                            .foregroundStyle(.background.secondary)
-                    @unknown default:
-                        RoundedRectangle(cornerRadius: 4)
-                            .foregroundStyle(.background.secondary)
-                    }
-                }
-            } else {
-                emptyImageView()
-            }
+    func album_title() -> String {
+        if let discogsAlbum {
+            return discogsAlbum.title
+        } else {
+            return appleMusic.album
         }
     }
     
-    init(id: String?, artist: String?, title: String?, album: String?,
-         duration: TimeInterval?, artworkURL: URL?) {
-        self.id = id ?? ""
-        
-        self.artist = artist ?? ""
-        self.title = title ?? ""
-        self.album = album ?? ""
-        
-        self.duration = duration ?? 0
-        self.artworkURL = artworkURL
+    func album_artwork() -> URL {
+        if let discogsAlbum {
+            return discogsAlbum.cover_image_URL ?? appleMusic.artworkURL
+        } else {
+            return appleMusic.artworkURL
+        }
+    }
+    
+    init(id: UUID,
+         artist: String,
+         title: String,
+         album: String,
+         duration: TimeInterval,
+         artworkURL: URL,
+         discogsAlbum: Album? = nil
+    ) {
+        self.id = id
+        self.appleMusic = AppleMusic(artist: artist, title: title, album: album, duration: duration, artworkURL: artworkURL)
+        self.discogsAlbum = discogsAlbum
     }
 }
+
 
 class ShazamViewModel: NSObject, ObservableObject {
     private var session = SHSession()
@@ -70,6 +64,8 @@ class ShazamViewModel: NSObject, ObservableObject {
     
     @Published var detectedSongs: [DetectedSong] = []
     @Published var nowPlayingSong: DetectedSong?
+    
+    @Published var userCollection: [Album]? // used to relate user collection to Shazam detections
     
     @Published var isListening: Bool = false
     
@@ -195,18 +191,40 @@ extension ShazamViewModel: SHSessionDelegate {
             return
         }
         
-        let song: DetectedSong = DetectedSong(
-            id: firstMatch.appleMusicID,
-            
-            artist: firstMatch.artist,
-            title: firstMatch.title,
-            album: firstMatch.songs.first?.albumTitle,
-            
-            duration: firstMatch.songs.first?.duration,
-            artworkURL: firstMatch.artworkURL
+        var song: DetectedSong = DetectedSong(
+            id: firstMatch.id,
+            artist: firstMatch.artist ?? "",
+            title: firstMatch.title ?? "",
+            album: firstMatch.songs.first?.albumTitle ?? "",
+            duration: firstMatch.songs.first?.duration ?? 0,
+            artworkURL: firstMatch.artworkURL ?? URL(string: "https://example.com/invalid-image-url.png")!
         )
         
-        print("Guesstimated detected song: \(song.title) - \(song.artist) [ISRC: \(song.id)]")
+        print("Guesstimated detected song: \(song.appleMusic.title) - \(song.appleMusic.album) by \(song.appleMusic.artist)")
+
+        // user collection is available for comparison
+        if let userCollection = userCollection {
+            let fuzzy = Fuse() // library for fuzzy search
+            var matchesUserCollection: [(album: Album, score: Double)] = []
+
+            // need to consider track list in here too
+            for albumDiscogs in userCollection {
+                if let temp = fuzzy.search("\(song.appleMusic.artist) - \(song.appleMusic.album)", in: "\(albumDiscogs.artist) - \(albumDiscogs.title)") {
+                    print("Fuzzy Score: \(temp.score)")
+                    matchesUserCollection.append((album: albumDiscogs, score: temp.score))
+                }
+            }
+
+            if let closestMatch = matchesUserCollection.max(by: { $0.score < $1.score }),
+               closestMatch.score > 0.4 {
+                song.discogsAlbum = closestMatch.album
+            } else {
+                song.discogsAlbum = nil
+            }
+
+            // Compare detected album with what's in the collection
+            print("\(song.discogsAlbum?.title ?? "No Match") VS \(song.appleMusic.album)")
+        }
         
         // buffer the detections, so we can be more confident about the results
         // especially songs with long intros
@@ -228,7 +246,7 @@ extension ShazamViewModel: SHSessionDelegate {
                 print("Song already detected, skipping...")
             } else {
                 print("\nUpdating tracklist...")
-                print("\t=> \(mostFrequentSong.title) - \(mostFrequentSong.artist)")
+                print("\t=> \(mostFrequentSong.appleMusic.title) - \(mostFrequentSong.album_title()) by \(mostFrequentSong.appleMusic.artist)")
                 
                 DispatchQueue.main.async {
                     withAnimation {
@@ -242,7 +260,7 @@ extension ShazamViewModel: SHSessionDelegate {
     
     // helper function, counts most common in array - modified from stack overflow (https://stackoverflow.com/a/38416464)
     func mostFrequentSong(array: [DetectedSong]) -> DetectedSong? {
-        var counts = [String: Int]()
+        var counts = [UUID: Int]()
 
         array.forEach { counts[$0.id] = (counts[$0.id] ?? 0) + 1 }
 
