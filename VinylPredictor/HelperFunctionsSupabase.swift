@@ -104,53 +104,42 @@ func fetchUserListeningStats(passed_user_id: UUID? = nil) async -> Result<TopLis
     }
 }
 
-func updateListeningHistory(album_name: String, artist_name: String, listening_hours: Int) async -> Result<Any, Error> {
-    do {
-        let user_id = try await supabase.auth.session.user.id.uuidString
+struct CollectionItem: Codable {
+    var user_id: UUID
+    var discogs_id: Int
+    var listened_to_seconds: Int?
+}
 
-        // Query to check if a record already exists with similar (fuzzy search) album_name and artist_name
-        // 'ilike'+pattern-matching techniques"
-        let existingRecords: [ListeningAnalytics] = try await supabase
-            .from("listening_analytics")
+func updateListeningHistory(for album: Album, listening_time_seconds: TimeInterval) async -> Result<Bool, Error> {
+    do {
+        let user_id = try await supabase.auth.session.user.id
+        
+        // Fetch the current value of listened_to_seconds
+        let currentListeningTime: CollectionItem = try await supabase
+            .from("collection")
             .select()
             .eq("user_id", value: user_id)
-            .filter("album_name", operator: "ilike", value: "%\(album_name)%") // Use the SQL ilike operator as a string
-            .filter("artist_name", operator: "ilike", value: "%\(artist_name)%") // Use the SQL ilike operator as a string
+            .eq("discogs_id", value: album.id)
+            .single()
             .execute()
             .value
+        
+        let updated_listening_time = (currentListeningTime.listened_to_seconds ?? 0) + Int(listening_time_seconds.rounded())
 
-        if let existingRecord = existingRecords.first {
-            // If a record exists, update the listening_hours
-            try await supabase
-                .from("listening_analytics")
-                .update([
-                    "listening_hours": existingRecord.listening_hours + listening_hours
-                ])
-                .eq("id", value: existingRecord.id)
-                .execute()
-        } else {
-            // If no record exists, create a new one, with the passed listening hours
-            try await supabase
-                .from("listening_analytics")
-                .insert([
-                    "user_id": user_id,
-                    "album_name": album_name,
-                    "artist_name": artist_name,
-                    "listening_hours": String(listening_hours)
-                ])
-                .execute()
-        }
+        // Update the listened_to_seconds value in the database
+        try await supabase
+            .from("collection")
+            .update([
+                "listened_to_seconds": updated_listening_time
+            ])
+            .eq("user_id", value: user_id)
+            .eq("discogs_id", value: album.id)
+            .execute()
 
         return .success(true)
     } catch {
         return .failure(error)
     }
-}
-
-struct CollectionItem: Codable {
-    
-    var user_id: UUID
-    var discogs_id: Int
 }
 
 

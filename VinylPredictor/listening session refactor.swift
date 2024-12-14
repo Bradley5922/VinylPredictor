@@ -34,6 +34,35 @@ struct Listening_Session: View {
         }
         .environment(userCollection)
         .onAppear(perform: loadUserCollection)
+        
+        .onDisappear {
+            Task {
+                print("Updating users listening history")
+                
+                // Process buffered detections to get the last song played
+                Shazam.processBufferedDetections()
+                
+                var durationByAlbum: [Album: TimeInterval] = [:]
+                
+                // Aggregate durations by album
+                for song in Shazam.detectedSongs {
+                    if let album = song.discogsAlbum {
+                        durationByAlbum[album, default: 0] += song.appleMusic.duration
+                    }
+                }
+                
+                print(durationByAlbum.map { "\($0.key.title): \(String(format: "%.2f", $0.value)) seconds" })
+                
+                // Update listening history for each album
+                for (album, time_listen) in durationByAlbum {
+                    
+                    let updated = await updateListeningHistory(for: album, listening_time_seconds: time_listen)
+                    print("Updated (\(updated)) listening history for: \(album.title) - \(time_listen) seconds.")
+                }
+                
+                print("Finished processing durationByAlbum.")
+            }
+        }
     }
     
     // MARK: - Components
@@ -48,13 +77,15 @@ struct Listening_Session: View {
                         songRow(for: song)
                     }
                     .onDelete(perform: deleteSong)
-                    .onChange(of: Shazam.detectedSongs) {
-                        withAnimation {
-                            updateTracklistHistory()
-                        }
-                    }
+                    
                 }
             }
+            .onChange(of: Shazam.detectedSongs) {
+                withAnimation {
+                    updateTracklistHistory()
+                }
+            }
+            
             .padding(.top, 10)
         }
         .listStyle(.plain)
@@ -102,7 +133,6 @@ struct Listening_Session: View {
     
     private func updateTracklistHistory() {
         var updatedList = Shazam.detectedSongs
-        _ = updatedList.popLast() // Remove the last element (now playing)
         tracklistHistory = updatedList.reversed()
     }
     
@@ -280,7 +310,7 @@ struct SpinningVinyl: View {
     
     // Constants
     private let rotationIncrement = 2.0
-    private let timerInterval: TimeInterval = 0.03
+    private let timerInterval: TimeInterval = 0.05
     private let additionalSpin: Double = 150
     
     var body: some View {

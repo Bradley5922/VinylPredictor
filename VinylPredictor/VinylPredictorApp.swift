@@ -35,7 +35,8 @@ struct VinylPredictorApp: App {
             Group {
                 switch viewParameters.currentRoot {
                 case .testing:
-                    ShazamTest()
+                    Fuzzy_Test()
+//                    ShazamTest()
 //                    EmptyView()
                 case .landing:
                     LandingPage(actAsHoldingView: $holdingViewShow)
