@@ -319,6 +319,7 @@ class ProfileMetadata: ObservableObject {
             } catch let error as PostgrestError where error.code == "PGRST116" {
                 
                 print("Couldn't find profile metadata, creating new one")
+                print(user_id)
                 // No existing metadata found, create a new one
                 let newProfile = await ProfileMetadataModel(
                     user_id: user_id,

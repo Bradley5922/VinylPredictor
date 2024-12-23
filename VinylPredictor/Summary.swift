@@ -29,38 +29,29 @@ struct Summary: View {
         NavigationView {
             
             VStack {
-                // make sure data has been loaded and computed
-                
-                if let top_album = top_album,
-                   let unloved_album = unloved_album,
-                   let total_time = total_time,
-                   let artists_distinct = artists_distinct,
-                   let top_artist = top_artist,
-                   let top_genres = top_genres
-                {
-                    let min_check: Bool = total_time < 1800
+                if computeTotalTimeListened(from: userCollection) < 1800 {
+                    VStack {
+                        Spacer()
+                        
+                        Text("Summary only available when listening time is over 30 minutes")
+                            .multilineTextAlignment(.center)
+                            .font(.title)
+                            .fontWeight(.light)
+                            .padding(.vertical)
+                        
+                        Spacer()
+                    }
+                } else {
                     
-                    if min_check {
-                        VStack {
-                            Spacer()
-                            
-                            Text("Summary only available when listening time is over 30 minutes")
-                                .multilineTextAlignment(.center)
-                                .font(.title)
-                                .fontWeight(.light)
-                                .padding(.vertical)
-                            
-                            Divider()
-                            
-                            Text("Current Total: \(total_time / 60) minutes")
-                                .foregroundStyle(.secondary)
-                                .padding(.vertical)
-                                
-                            
-                            Spacer()
-                        }
-                        .padding()
-                    } else {
+                    // make sure data has been loaded and computed
+                    
+                    if let top_album = top_album,
+                       let unloved_album = unloved_album,
+                       let total_time = total_time,
+                       let artists_distinct = artists_distinct,
+                       let top_artist = top_artist,
+                       let top_genres = top_genres
+                    {
                         
                         TopArtistBox(top_artist: top_artist)
                         
@@ -77,16 +68,16 @@ struct Summary: View {
                             }
                         }
                         
+                    } else {
+                        VStack {
+                            Spacer()
+                            ProgressView().scaleEffect(2)
+                            Spacer()
+                        }
                     }
-                } else {
-                    VStack {
-                        Spacer()
-                        ProgressView().scaleEffect(2)
-                        Spacer()
-                    }
+                    
+                    Spacer()
                 }
-                
-                Spacer()
             }
             
             .padding()

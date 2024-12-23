@@ -155,14 +155,10 @@ struct pictureAsyncFetch: View {
                 image
                     .resizable()
                     .scaledToFill()
-            case .empty:
+            default:
                 Image(systemName: "photo.fill")
                     .font(.system(size: 50))
                     .padding()
-            default:
-                // Show a spinner while loading
-                ProgressView()
-                    .scaleEffect(2)
             }
         }
         .id(url)
