@@ -529,30 +529,38 @@ func calculateTopGenrePercentage(from genres: [(String, Int)], specific: (String
 struct RecommendationPageLink: View {
     
     var body: some View {
-        RoundedRectangle(cornerRadius: 8)
-            .foregroundStyle(.background.secondary)
-            .frame(maxWidth: .infinity, maxHeight: 175)
         
-            .overlay {
-                VStack {
-                    Text("What's New")
-                        .font(.title2)
-                        .bold()
-                    
-                    Spacer()
-                    
-                    Image(systemName: "star.circle.fill")
-                        .font(.system(size: 45))
-                        .foregroundStyle(.yellow)
-                    
-                    Spacer()
-                    
-                    Text("Tap to for album recommendations!")
-                        .font(.footnote)
-                        .multilineTextAlignment(.center)
+        NavigationLink(destination:
+            Text("Coming Soon")
+            .font(.title)
+            .bold()
+        ) {
+            RoundedRectangle(cornerRadius: 8)
+                .foregroundStyle(.background.secondary)
+                .frame(maxWidth: .infinity, maxHeight: 175)
+            
+                .overlay {
+                    VStack {
+                        Text("What's New")
+                            .font(.title2)
+                            .bold()
+                        
+                        Spacer()
+                        
+                        Image(systemName: "star.circle.fill")
+                            .font(.system(size: 45))
+                            .foregroundStyle(.yellow)
+                        
+                        Spacer()
+                        
+                        Text("Tap to for album recommendations!")
+                            .font(.footnote)
+                            .multilineTextAlignment(.center)
+                    }
+                    .padding()
                 }
-                .padding()
-            }
+        }
+        .foregroundStyle(.primary)
     }
 }
 
