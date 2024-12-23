@@ -19,10 +19,19 @@ class AlbumCollectionModel: ObservableObject, Observable {
     // Functions to add and remove albums
     func addAlbum(_ album: Album) {
         array.append(album)
+        listened_to_seconds.append(0)
     }
     
     func removeAlbum(_ album: Album) {
-        array.removeAll { $0.id == album.id }
+        let indicesToRemove = array.enumerated().compactMap { index, element in
+            element.id == album.id ? index : nil
+        }
+
+        // Sort indices in descending order, as not to mess with indexes of latter elements
+        for index in indicesToRemove.sorted(by: >) {
+            array.remove(at: index)
+            listened_to_seconds.remove(at: index)
+        }
     }
     
     func inCollection(_ album: Album) -> Bool {
@@ -172,27 +181,50 @@ func separatedTitle(from text: String, separator: String = "-", maxLength: Int? 
     return (artist, title)
 }
 
-func searchDiscogs(searchTerm: String) async -> Result<[Album], Error> {
-    let response = await getJSONfromURL(
-        URL_string: "https://api.discogs.com/database/search?q=\(searchTerm)&type=master&format=Vinyl&per_page=20",
-        authHeader: "Discogs  key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)"
-    )
+func searchDiscogs(searchTerm: String? = nil, barcode: String? = nil) async -> Result<[Album], Error> {
+    // Determine the search query based on the presence of barcode or searchTerm
+    let query: String
+    if let barcode = barcode {
+        query = "barcode=\(barcode)"
+    } else if let searchTerm = searchTerm {
+        query = "q=\(searchTerm)"
+    } else {
+        return .failure(NSError(domain: "No search term or barcode provided", code: 0, userInfo: nil))
+    }
+    
+    let url1 = "https://api.discogs.com/database/search?\(query)&type=master&format=Album&per_page=25"
+    let url2 = "https://api.discogs.com/database/search?\(query)&type=master&format=Vinyl&per_page=25"
+    
+    // sometimes items are mis-categorised on discogs
+    async let response1 = getJSONfromURL(URL_string: url1, authHeader: "Discogs key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)")
+    async let response2 = getJSONfromURL(URL_string: url2, authHeader: "Discogs key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)")
+    
+    // Await both responses
+    let (result1, result2) = await (response1, response2)
     
     var searchResults: [Album] = []
     
-    switch response {
-    case .success(let json):
-        for index in json["results"].arrayValue {
-
-            searchResults.append(Album(json: index, full_data: false))
+    // Process the results
+    switch (result1, result2) {
+    case (.success(let json1), .success(let json2)):
+        // Combine results from both responses
+        let combinedResults = json1["results"].arrayValue + json2["results"].arrayValue
+        
+        // Remove duplicates based on album master ID
+        let uniqueResults = Array(
+            Set(combinedResults.compactMap { $0["master_id"].intValue })
+        ).compactMap { id in
+            combinedResults.first { $0["master_id"].intValue == id }
         }
         
+        // Map JSON to Album objects
+        searchResults = uniqueResults.map { Album(json: $0, full_data: false) }
         return .success(searchResults)
-
-    case .failure(let error):
+        
+    case (.failure(let error), _), (_, .failure(let error)):
+        // Return the first encountered error
         return .failure(error)
     }
-    
 }
 
 func discogsFetch(id: Int) async -> Result<Album, Error> {

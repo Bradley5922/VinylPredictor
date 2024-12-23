@@ -42,7 +42,7 @@ struct BarcodeReader: View {
                 
                 // search Discogs database
                 Task {
-                    if case .success(let album) = await searchDiscogs(searchTerm: valueOfBarcode) {
+                    if case .success(let album) = await searchDiscogs(barcode: valueOfBarcode) {
                         
                         if album.isEmpty != true {
                             let foundAlbum = album.first!

@@ -64,6 +64,10 @@ struct ListViewContent: View {
     @State var searchText: String = ""
     @State var searchResults: [Album] = []
     
+    // used for debouncing
+    // last active search Task so we can cancel it if needed
+    @State private var searchTask: Task<(), Never>? = nil
+    
     var body: some View {
         let sortedCollection = userCollection.array.sorted { $0.title < $1.title }
         
@@ -86,15 +90,31 @@ struct ListViewContent: View {
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
         
         .onChange(of: searchText) {
-            Task {
+            // Cancel any pending task
+            searchTask?.cancel()
+            
+            // If user clears text, clear results
+            if searchText.isEmpty {
+                searchResults = []
+                return
+            }
+            
+            // "Debounce" search to only make request when user stops typing
+            searchTask = Task {
+                // Debounce for 1 seconds
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                
+                // Boilerplate for debounding
+                if Task.isCancelled { return }
+                
                 if searchText.count > 2 {
-                    
                     if case .success(let results) = await searchDiscogs(searchTerm: searchText) {
-                        
                         searchResults = results
                     } else {
                         searchResults = []
                     }
+                } else {
+                    searchResults = []
                 }
             }
         }
