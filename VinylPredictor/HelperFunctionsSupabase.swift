@@ -12,97 +12,97 @@ import PhotosUI
 import CryptoKit
 import MusicKit
 
-struct ListeningAnalytics: Codable {
-    var id: UUID
-    var user_id: String
-    var album_name: String
-    var artist_name: String
-    var listening_hours: Int
-}
+//struct ListeningAnalytics: Codable {
+//    var id: UUID
+//    var user_id: String
+//    var album_name: String
+//    var artist_name: String
+//    var listening_hours: Int
+//}
+//
+//struct ItemListeningStats: Codable, Identifiable {
+//    var id: UUID {
+//        UUID() // Generate a unique ID for use in SwiftUI Lists\
+//    }
+//    
+//    let name: String
+//    let total_listening_mins: Int
+//}
+//
+//struct TopListeningStats {
+//    let overall: Int
+//    let topArtists: [ItemListeningStats]
+//    let topAlbums: [ItemListeningStats]
+//}
+//
+//func fetchOverallListeningTime(user_id: UUID) async -> Result<Int, Error> {
+//    do {
+//
+//        // Fetch data via database function
+//        let totalTime: Int = try await supabase
+//            .rpc("get_total_listening_time", params: ["user_id_input": user_id])
+//            .execute()
+//            .value
+//
+//        return .success(totalTime)
+//    } catch {
+//        return .failure(error)
+//    }
+//}
+//
+//func fetchTopArtists(user_id: UUID) async -> Result<[ItemListeningStats], Error> {
+//    do {
+//
+//        // Fetch data via database function
+//        let topArtists: [ItemListeningStats] = try await supabase
+//            .rpc("get_top_artists", params: ["user_id_input": user_id])
+//            .execute()
+//            .value
+//
+//        return .success(topArtists)
+//    } catch {
+//        return .failure(error)
+//    }
+//}
 
-struct ItemListeningStats: Codable, Identifiable {
-    var id: UUID {
-        UUID() // Generate a unique ID for use in SwiftUI Lists\
-    }
-    
-    let name: String
-    let total_listening_mins: Int
-}
 
-struct TopListeningStats {
-    let overall: Int
-    let topArtists: [ItemListeningStats]
-    let topAlbums: [ItemListeningStats]
-}
-
-func fetchOverallListeningTime(user_id: UUID) async -> Result<Int, Error> {
-    do {
-
-        // Fetch data via database function
-        let totalTime: Int = try await supabase
-            .rpc("get_total_listening_time", params: ["user_id_input": user_id])
-            .execute()
-            .value
-
-        return .success(totalTime)
-    } catch {
-        return .failure(error)
-    }
-}
-
-func fetchTopArtists(user_id: UUID) async -> Result<[ItemListeningStats], Error> {
-    do {
-
-        // Fetch data via database function
-        let topArtists: [ItemListeningStats] = try await supabase
-            .rpc("get_top_artists", params: ["user_id_input": user_id])
-            .execute()
-            .value
-
-        return .success(topArtists)
-    } catch {
-        return .failure(error)
-    }
-}
-
-
-func fetchTopAlbums(user_id: UUID) async -> Result<[ItemListeningStats], Error> {
-    do {
-
-        // Fetch data via database function
-        let topAlbums: [ItemListeningStats] = try await supabase
-            .rpc("get_top_albums", params: ["user_id_input": user_id])
-            .execute()
-            .value
-
-        return .success(topAlbums)
-    } catch {
-        return .failure(error)
-    }
-}
-
-func fetchUserListeningStats(passed_user_id: UUID? = nil) async -> Result<TopListeningStats, Error> {
-    do {
-        var user_id: UUID
-        
-        if let passed_user_id = passed_user_id {
-            user_id = passed_user_id
-        } else {
-            // probably wanting current user profile
-            user_id = try await supabase.auth.session.user.id
-        }
-        
-        let temp = await TopListeningStats(
-            overall: try fetchOverallListeningTime(user_id: user_id).get(),
-            topArtists: try fetchTopArtists(user_id: user_id).get(),
-            topAlbums: try fetchTopAlbums(user_id: user_id).get()
-        )
-        
-        return .success(temp)
-    } catch {
-        return .failure(error)
-    }
-}
+//func fetchTopAlbums(user_id: UUID) async -> Result<[ItemListeningStats], Error> {
+//    do {
+//
+//        // Fetch data via database function
+//        let topAlbums: [ItemListeningStats] = try await supabase
+//            .rpc("get_top_albums", params: ["user_id_input": user_id])
+//            .execute()
+//            .value
+//
+//        return .success(topAlbums)
+//    } catch {
+//        return .failure(error)
+//    }
+//}
+//
+//func fetchUserListeningStats(passed_user_id: UUID? = nil) async -> Result<TopListeningStats, Error> {
+//    do {
+//        var user_id: UUID
+//        
+//        if let passed_user_id = passed_user_id {
+//            user_id = passed_user_id
+//        } else {
+//            // probably wanting current user profile
+//            user_id = try await supabase.auth.session.user.id
+//        }
+//        
+//        let temp = await TopListeningStats(
+//            overall: try fetchOverallListeningTime(user_id: user_id).get(),
+//            topArtists: try fetchTopArtists(user_id: user_id).get(),
+//            topAlbums: try fetchTopAlbums(user_id: user_id).get()
+//        )
+//        
+//        return .success(temp)
+//    } catch {
+//        return .failure(error)
+//    }
+//}
 
 struct CollectionItem: Codable {
     var user_id: UUID
@@ -110,7 +110,7 @@ struct CollectionItem: Codable {
     var listened_to_seconds: Int?
 }
 
-func updateListeningHistory(for album: Album, listening_time_seconds: TimeInterval) async -> Result<Bool, Error> {
+func updateListeningHistory(for album: Album, listening_time_seconds: TimeInterval) async -> Result<CollectionItem, Error> {
     do {
         let user_id = try await supabase.auth.session.user.id
         
@@ -127,16 +127,19 @@ func updateListeningHistory(for album: Album, listening_time_seconds: TimeInterv
         let updated_listening_time = (currentListeningTime.listened_to_seconds ?? 0) + Int(listening_time_seconds.rounded())
 
         // Update the listened_to_seconds value in the database
-        try await supabase
+        let updated: CollectionItem = try await supabase
             .from("collection")
             .update([
                 "listened_to_seconds": updated_listening_time
             ])
             .eq("user_id", value: user_id)
             .eq("discogs_id", value: album.id)
+            .select()
+            .single()
             .execute()
+            .value
 
-        return .success(true)
+        return .success(updated)
     } catch {
         return .failure(error)
     }
@@ -184,21 +187,20 @@ func removeFromCollection(discogs_id: Int) async -> Result<CollectionItem?, Erro
     }
 }
 
-func fetchCollection(passed_user_id: UUID? = nil) async -> Result<[Album], Error> {
-    
+func fetchCollection(passed_user_id: UUID? = nil) async -> Result<[(Album, Int)], Error> {
     do {
-    
         var user_id: UUID
         
         if let passed_user_id = passed_user_id {
             user_id = passed_user_id
         } else {
-            // probably wanting current user profile
+            // Fetching the current user ID from the session
             user_id = try await supabase.auth.session.user.id
         }
         
-        var collectionAlbums: [Album] = []
+        var collectionAlbums: [(Album, Int)] = []
         
+        // Fetch collection items from the database
         let collectionItems: [CollectionItem] = try await supabase
             .from("collection")
             .select()
@@ -206,9 +208,10 @@ func fetchCollection(passed_user_id: UUID? = nil) async -> Result<[Album], Error
             .execute()
             .value
         
+        // Fetch details for each album and populate collectionAlbums
         for item in collectionItems {
             if case .success(let album) = await discogsFetch(id: item.discogs_id) {
-                collectionAlbums.append(album)
+                collectionAlbums.append((album, item.listened_to_seconds ?? 0))
             }
         }
         

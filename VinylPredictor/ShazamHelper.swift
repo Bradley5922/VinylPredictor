@@ -81,6 +81,10 @@ class ShazamViewModel: NSObject, ObservableObject {
         super.init()
         session.delegate = self
 
+        setup_session()
+    }
+        
+    func setup_session() {
         cancellable = $isListening.sink { [weak self] state in
             guard let self = self else { return }
             if state {
@@ -92,10 +96,16 @@ class ShazamViewModel: NSObject, ObservableObject {
             }
         }
     }
-        
-    deinit {
+    
+    func clear_session() {
+        // remove timers to function calls
         tracklist_timer?.invalidate()
-        cancellable?.cancel()
+        
+        // clear data
+        self.detectedSongs.removeAll()
+        self.bufferedDetections.removeAll()
+        
+        self.nowPlayingSong = nil
     }
 
     private func startTimer() {
@@ -203,9 +213,12 @@ extension ShazamViewModel: SHSessionDelegate {
         var matchesUserCollection: [(album: Album, score: Double)] = []
         
         for albumDiscogs in userCollection {
+            
             let artistScore = compareStrings(a: song.appleMusic.artist, b: albumDiscogs.artist)
             let albumScore = compareStrings(a: song.appleMusic.album, b: albumDiscogs.title)
+            
             let score = (artistScore * 0.70) + (albumScore * 0.30)
+            
             let threshold = 0.6
             if score <= threshold {
                 matchesUserCollection.append((album: albumDiscogs, score: score))
@@ -214,8 +227,10 @@ extension ShazamViewModel: SHSessionDelegate {
 
         if let closestMatch = matchesUserCollection.min(by: { $0.score < $1.score }),
            closestMatch.score <= 0.6 {
+            logger.info("Discogs match found against Shazam detection")
             song.discogsAlbum = closestMatch.album
         } else {
+            logger.warning("Discogs match not found against Shazam detection")
             song.discogsAlbum = nil
         }
         

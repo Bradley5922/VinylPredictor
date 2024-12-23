@@ -10,6 +10,26 @@ import Foundation
 import SwiftUI
 import MusicKit
 
+class AlbumCollectionModel: ObservableObject, Observable {
+    @Published var array: [Album] = []
+    @Published var listened_to_seconds: [Int] = []
+    
+    @Published var loading = true
+    
+    // Functions to add and remove albums
+    func addAlbum(_ album: Album) {
+        array.append(album)
+    }
+    
+    func removeAlbum(_ album: Album) {
+        array.removeAll { $0.id == album.id }
+    }
+    
+    func inCollection(_ album: Album) -> Bool {
+        return array.contains(where: { $0.id == album.id })
+    }
+}
+
 // modified from other applications of mine
 func getJSONfromURL(URL_string: String, authHeader: String) async -> Result<JSON, Error> {
     
@@ -191,7 +211,7 @@ func discogsFetch(id: Int) async -> Result<Album, Error> {
     
 }
 
-func AppleMusicFetch(searchTerm: String) async -> Result<MusicKit.Album, Error> {
+func AppleMusicFetchAlbums(searchTerm: String) async -> Result<MusicKit.Album, Error> {
     print("Fetching Apple Music album metadata")
     
     do {
@@ -214,6 +234,37 @@ func AppleMusicFetch(searchTerm: String) async -> Result<MusicKit.Album, Error> 
             return .success(album)
         } else {
             return .failure(NSError(domain: "No full albums found", code: 404, userInfo: nil))
+        }
+        
+    } catch {
+        return .failure(error)
+    }
+}
+
+func AppleMusicFetchArtist(searchTerm: String) async -> Result<MusicKit.Artist, Error> {
+    print("Fetching Apple Music artist metadata")
+    
+    do {
+        // Request Apple Music authorization
+        let musicAuthorizationStatus = await MusicAuthorization.request()
+        
+        if musicAuthorizationStatus != .authorized {
+            return .failure(NSError(domain: "Authentication required", code: 401, userInfo: nil))
+        }
+        
+        // Create a search request for artists matching the search term
+        var searchRequest = MusicCatalogSearchRequest(term: searchTerm, types: [MusicKit.Artist.self])
+        searchRequest.limit = 1
+        
+        // Perform the search
+        let response = try await searchRequest.response()
+        
+        // Get the first artist from the results
+        if let artist = response.artists.first {
+            print("Found artist: \(artist)")
+            return .success(artist)
+        } else {
+            return .failure(NSError(domain: "No artist found", code: 404, userInfo: nil))
         }
         
     } catch {

@@ -26,6 +26,8 @@ struct VinylPredictorApp: App {
     @State var holdingViewShow: Bool = true
     @StateObject private var viewParameters: ViewParameters = ViewParameters()
     
+    @StateObject var userCollection: AlbumCollectionModel = AlbumCollectionModel()
+    
     // Create an init ShazamViewModel, incase the user needs it, so it is ready to run in background
     @StateObject private var shazamViewModel: ShazamViewModel = ShazamViewModel()
     
@@ -54,6 +56,15 @@ struct VinylPredictorApp: App {
                             do {
                                 _ = try await supabase.auth.session
                                 
+                                // fetch the users collection, ready to be used
+                                if case .success(let collection) = await fetchCollection() {
+                                    let albums = collection.map { $0.0 }
+                                    userCollection.array = albums
+                                    userCollection.listened_to_seconds = collection.map { $0.1 }
+                                    
+                                    userCollection.loading = false
+                                }
+                                
                                 viewParameters.currentRoot = .home
                             } catch {
                                 // No session, throws error
@@ -68,7 +79,8 @@ struct VinylPredictorApp: App {
             }
             .colorScheme(.dark) // Force dark mode on all views
             .environmentObject(viewParameters)
-            .environmentObject(shazamViewModel) 
+            .environmentObject(shazamViewModel)
+            .environment(userCollection)
             
         }
     }

@@ -35,11 +35,17 @@ struct HomeScreen: View {
                     Label("Play Session", systemImage: "music.quarternote.3")
                 }
             
-            StatsTest()
+            Summary()
                 .tag(SelectedTab.summary)
                 .tabItem {
                     Label("Summary", systemImage: "list.bullet.rectangle.fill")
                 }
+            
+//            StatsTest()
+//                .tag(SelectedTab.summary)
+//                .tabItem {
+//                    Label("Summary", systemImage: "list.bullet.rectangle.fill")
+//                }
             
             Profile()
                 .tag(SelectedTab.profile)

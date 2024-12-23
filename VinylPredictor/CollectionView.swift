@@ -11,27 +11,9 @@ import SwiftUI
 import SwiftyJSON
 import Combine
 
-class AlbumCollectionModel: ObservableObject, Observable {
-    @Published var array: [Album] = []
-    @Published var loading = true
-    
-    // Functions to add and remove albums
-    func addAlbum(_ album: Album) {
-        array.append(album)
-    }
-    
-    func removeAlbum(_ album: Album) {
-        array.removeAll { $0.id == album.id }
-    }
-    
-    func inCollection(_ album: Album) -> Bool {
-        return array.contains(where: { $0.id == album.id })
-    }
-}
-
 struct CollectionView: View {
     
-    @StateObject var userCollection: AlbumCollectionModel = AlbumCollectionModel()
+    @EnvironmentObject var userCollection: AlbumCollectionModel
     @StateObject private var barcodeViewData = BarcodeViewDataStorage()
     
     var body: some View {
@@ -56,18 +38,7 @@ struct CollectionView: View {
                 }
             }
         }
-        .environment(userCollection)
         .environment(barcodeViewData)
-        
-        .onAppear() {
-            Task {
-                if case .success(let collection) = await fetchCollection() {
-                    userCollection.array = collection
-                    userCollection.array.sort(by: <)
-                    userCollection.loading = false
-                }
-            }
-        }
     }
 }
 
@@ -94,15 +65,16 @@ struct ListViewContent: View {
     @State var searchResults: [Album] = []
     
     var body: some View {
+        let sortedCollection = userCollection.array.sorted { $0.title < $1.title }
+        
         List {
             barcodeRowView()
-            
             if userCollection.array.isEmpty && searchText.isEmpty {
                 NoAlbumsInfo()
                     .listRowBackground(Color.yellow.opacity(0.5))
             }
             
-            ForEach(searchText.isEmpty ? userCollection.array : searchResults, id: \.id) { item in
+            ForEach(searchText.isEmpty ? sortedCollection : searchResults, id: \.id) { item in
                 NavigationLink(destination:
                     AlbumDetail(selectedAlbumID: item.id)
                         .toolbar(.hidden, for: .tabBar)
@@ -253,6 +225,8 @@ struct AlbumHeaderView: View {
         Group {
             pictureAsyncFetch(url: album.cover_image_URL)
                 .frame(width: 275, height: 275)
+                .background(Color.gray)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
 
             Text(album.title)
                 .font(.title)
