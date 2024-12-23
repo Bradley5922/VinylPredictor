@@ -2,8 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	</array>
 	<key>NSAppleMusicUsageDescription</key>
-	<string>Used along with Shazam to get the albums you are listening to. Allowing the app to create a listening history.</string>
+	<string>Used to get data from Apple Music&apos;s database.</string>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>

@@ -30,6 +30,8 @@ struct LandingPage: View {
     @Binding var actAsHoldingView: Bool
     @EnvironmentObject private var viewParameters: ViewParameters
     
+    @EnvironmentObject var userCollection: AlbumCollectionModel
+    
     var body: some View {
         ZStack() {
             Rectangle()
@@ -88,6 +90,7 @@ struct LandingPage: View {
                             print("User Creation Response: \(response)")
                             
                             // Change root view
+                            userCollection.loading = false // nothing to load
                             viewParameters.currentRoot = .home
                             
                             
