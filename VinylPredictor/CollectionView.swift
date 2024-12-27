@@ -87,6 +87,7 @@ struct ListViewContent: View {
                 }
             }
         }
+        // add a artist text box to allow granular search if needed
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
         
         .onChange(of: searchText) {
@@ -289,44 +290,36 @@ struct InCollectionButton: View {
     @EnvironmentObject var userCollection: AlbumCollectionModel
     
     let selectedAlbum: Album
+    @State var inCollection: Bool = false
     
     var body: some View {
+        
+        
         Button {
             Task {
-                var request: Result<CollectionItem?, any Error>
                 
-                if !userCollection.inCollection(selectedAlbum) {
-                    request = await addToCollection(album: selectedAlbum)
+                if !inCollection {
+                    await userCollection.addAlbum(selectedAlbum)
+                    inCollection.toggle()
                 } else {
-                    request = await removeFromCollection(discogs_id: selectedAlbum.id)
+                    await userCollection.removeAlbum(selectedAlbum)
+                    inCollection.toggle()
                 }
                 
-                switch request {
-                case .success(let result):
-                    print("Added/Removed from Collection: \(String(describing: result))")
-                    
-                    if userCollection.inCollection(selectedAlbum) {
-                        // was in collection, now removed, so therefore remove it locally
-                        userCollection.removeAlbum(selectedAlbum)
-                    } else {
-                        // wasn't in collection, now added, so therefore add it locally
-                        userCollection.addAlbum(selectedAlbum)
-                    }
-                
-                case .failure(let error):
-                    print(error)
-                }
             }
         } label: {
             RoundedRectangle(cornerRadius: 10)
-                .fill(userCollection.inCollection(selectedAlbum) ? Color.red : Color.blue)
+                .fill(inCollection ? Color.red : Color.blue)
                 .frame(height: 50).frame(maxWidth: .infinity)
                 .overlay(
-                    Text(userCollection.inCollection(selectedAlbum) ? "Remove from Collection" : "Add to Collection")
+                    Text(inCollection ? "Remove from Collection" : "Add to Collection")
                         .foregroundColor(.white)
                         .font(.headline)
                 )
                 .padding([.bottom])
+        }
+        .onAppear {
+            inCollection = userCollection.inCollection(selectedAlbum)
         }
     }
 }

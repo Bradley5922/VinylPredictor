@@ -17,21 +17,31 @@ class AlbumCollectionModel: ObservableObject, Observable {
     @Published var loading = true
     
     // Functions to add and remove albums
-    func addAlbum(_ album: Album) {
-        array.append(album)
-        listened_to_seconds.append(0)
+    func addAlbum(_ album: Album) async {
+        
+        DispatchQueue.main.async { // UI changes on main thread
+            self.array.append(album)
+            self.listened_to_seconds.append(0)
+        }
+        
+        let _ = await addToCollection(album: album)
     }
     
-    func removeAlbum(_ album: Album) {
+    func removeAlbum(_ album: Album) async {
         let indicesToRemove = array.enumerated().compactMap { index, element in
             element.id == album.id ? index : nil
         }
 
         // Sort indices in descending order, as not to mess with indexes of latter elements
         for index in indicesToRemove.sorted(by: >) {
-            array.remove(at: index)
-            listened_to_seconds.remove(at: index)
+            
+            DispatchQueue.main.async {
+                self.array.remove(at: index)
+                self.listened_to_seconds.remove(at: index)
+            }
         }
+        
+        let _ = await removeFromCollection(discogs_id: album.id)
     }
     
     func inCollection(_ album: Album) -> Bool {
@@ -120,49 +130,67 @@ struct Album: Identifiable, Hashable, Comparable {
     
     var cover_image_URL: URL?
 
-    func trimTitle(title: String) -> String {
-        let trimmedTitle = title.count > 32 ? String(title.prefix(32)) + "..." : title
-        
-        return trimmedTitle
-    }
-
     init(json: JSON, full_data: Bool) {
         
         self.full_data = full_data
         
-        if full_data { // data from Masters Endpoint
+        if full_data {
+            /// PARSING: /releases/{id}
+
             self.id = json["id"].intValue
             self.title = json["title"].stringValue
-            self.artist = json["artists"][0]["name"].stringValue
-            self.release_year = json["year"].stringValue
-            self.styles = json["styles"].arrayValue.map { $0.stringValue }
-            self.cover_image_URL = json["images"][0]["uri"].url
             
-            var tempTracklist: [Track] = []
-            
-            for track in json["tracklist"].arrayValue {
-                tempTracklist.append(
-                    Track(position: track["position"].stringValue, title: track["title"].stringValue)
-                )
+            // For /releases/, primary artist is at [0]
+            if let firstArtist = json["artists"].arrayValue.first {
+                self.artist = firstArtist["name"].stringValue
+            } else {
+                self.artist = "Unknown Artist"
             }
             
-            self.trackList = tempTracklist
+            self.release_year = json["year"].stringValue
+            self.styles = json["styles"].arrayValue.map { $0.stringValue }
             
-        } else { // data from search endpoint
+            if let firstImageURL = json["images"].arrayValue.first?["resource_url"].url {
+                self.cover_image_URL = firstImageURL
+            } else {
+                self.cover_image_URL = nil
+            }
+            
+            let rawTrackList = json["tracklist"].arrayValue
+            var tempTracklist: [Track] = []
+            for track in rawTrackList {
+                tempTracklist.append(
+                    Track(
+                        position: track["position"].stringValue,
+                        title: track["title"].stringValue
+                    )
+                )
+            }
+            self.trackList = tempTracklist.isEmpty ? nil : tempTracklist
+
+        } else {
+            /// PARSING: /database/search?{...}
+            
             self.id = json["id"].intValue
             self.title = json["title"].stringValue
             
-            // Separate artist and title from the title string, API response: "Artist - Title"
+            // For searches, "title" is "Artist - Title"
             let (artist, title) = separatedTitle(from: self.title)
             self.artist = artist.isEmpty ? "Unknown Artist" : artist
             self.title = title.isEmpty ? "Unknown Title" : title
             
             self.release_year = json["year"].stringValue
             self.styles = json["style"].arrayValue.map { $0.stringValue }
+            
             self.cover_image_URL = json["cover_image"].url
+            self.trackList = nil // Not provided in the search response
         }
     }
 
+    func trimTitle(title: String) -> String {
+        let trimmedTitle = title.count > 32 ? String(title.prefix(32)) + "..." : title
+        return trimmedTitle
+    }
 }
 
 // Relevant for above `struct`
@@ -187,13 +215,13 @@ func searchDiscogs(searchTerm: String? = nil, barcode: String? = nil) async -> R
     if let barcode = barcode {
         query = "barcode=\(barcode)"
     } else if let searchTerm = searchTerm {
-        query = "q=\(searchTerm)"
+        query = "title=\(searchTerm)"
     } else {
         return .failure(NSError(domain: "No search term or barcode provided", code: 0, userInfo: nil))
     }
     
-    let url1 = "https://api.discogs.com/database/search?\(query)&type=master&format=Album&per_page=25"
-    let url2 = "https://api.discogs.com/database/search?\(query)&type=master&format=Vinyl&per_page=25"
+    let url1 = "https://api.discogs.com/database/search?\(query)&type=release&format=Album&per_page=50"
+    let url2 = "https://api.discogs.com/database/search?\(query)&type=release&format=Vinyl&per_page=50"
     
     // sometimes items are mis-categorised on discogs
     async let response1 = getJSONfromURL(URL_string: url1, authHeader: "Discogs key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)")
@@ -229,7 +257,7 @@ func searchDiscogs(searchTerm: String? = nil, barcode: String? = nil) async -> R
 
 func discogsFetch(id: Int) async -> Result<Album, Error> {
     let response = await getJSONfromURL(
-        URL_string: "https://api.discogs.com/masters/\(id)",
+        URL_string: "https://api.discogs.com/releases/\(id)",
         authHeader: "Discogs  key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)"
     )
     
