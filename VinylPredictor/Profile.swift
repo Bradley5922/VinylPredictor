@@ -7,33 +7,49 @@
 
 import SwiftUI
 import _PhotosUI_SwiftUI
+import Auth
 
 struct Profile: View {
     
     @StateObject var profile_metadata: ProfileMetadata = ProfileMetadata()
-
-    var emailPrefix: String {
-        if let email = supabase.auth.currentSession?.user.email,
-           let atIndex = email.firstIndex(of: "@") {
-            return String(email[..<atIndex])
-        } else {
-            return "User Profile"
-        }
-    }
+    
+    @State private var editTextAlertShowing = false
+    @State private var editedName = ""
 
     var body: some View {
         NavigationView {
             VStack {
-                if let _ = profile_metadata.user_id {
-
+                if let _ = profile_metadata.user_id { // Updated from user_id
+                    
                     ProfilePicture(profile_metadata: profile_metadata)
                         .frame(width: 175, height: 175)
                         .background(Color.gray)
                         .clipShape(Circle())
                     
-                    Text(emailPrefix)
-                        .font(.title)
-                        .bold()
+                    Button {
+                        editTextAlertShowing.toggle()
+                    } label: {
+                        HStack(alignment: .center) {
+                            Text(profile_metadata.display_name) // Updated from display_name
+                                .font(.title)
+                                .bold()
+                            
+                            Image(systemName: "square.and.pencil")
+                                .foregroundStyle(.secondary)
+                                .bold()
+                        }
+                        .foregroundStyle(.white)
+                    }
+                    .alert("Enter your name", isPresented: $editTextAlertShowing) {
+                        TextField("Enter your name", text: $editedName)
+                        Button("Update") {
+                            Task {
+                                await profile_metadata.updateProfileMetadata(displayName: editedName) // Updated parameter
+                            }
+                        }
+                    } message: {
+                        Text("This is the name that will be displayed to other users.")
+                    }
                     
                     Divider()
                     
@@ -62,10 +78,10 @@ struct Profile: View {
                 }
             }
             .padding()
-            .task {
-                // Use .task instead of onAppear for SwiftUI concurrency
-                await profile_metadata.fetch()
-            }
+//            .task {
+//                // Use .task instead of onAppear for SwiftUI concurrency
+//                await $profile_metadata.fetch
+//            }
             .navigationTitle("Profile")
             .navigationBarTitleDisplayMode(.inline)
             
@@ -80,6 +96,7 @@ struct Profile: View {
                     }
                 }
             }
+            .ignoresSafeArea(.keyboard)
         }
         .environmentObject(profile_metadata)
     }
@@ -101,9 +118,9 @@ struct ProfilePicture: View {
                         if let data = try? await selectedItem.first!.loadTransferable(type: Data.self),
                            let image = UIImage(data: data) {
                             
-                            // change image in UI instantly
+                            // Change image in UI instantly
                             await MainActor.run {
-                                profile_metadata.temporaryProfilePicture = image
+                                profile_metadata.temp_profile_picture = image
                             }
                             
                             // Upload the new profile picture
@@ -112,10 +129,10 @@ struct ProfilePicture: View {
                                 let response = await profile_metadata.uploadProfilePicture(image)
                                 
                                 switch response {
-                                case .success(let response):
-                                    print("Uploaded profile picture: \(response)")
+                                case .success:
+                                    print("Uploaded profile picture successfully.")
                                 case .failure(let error):
-                                    print("Failed to upload profile picture: \(error)")
+                                    print("Failed to upload profile picture: \(error.localizedDescription)")
                                 }
                             }
                         } else {
@@ -128,13 +145,14 @@ struct ProfilePicture: View {
             matching: .images,
             photoLibrary: .shared()
         ) {
-            if let temp_profile_picture = profile_metadata.temporaryProfilePicture {
+            if let temp_profile_picture = profile_metadata.temp_profile_picture {
                 Image(uiImage: temp_profile_picture)
                     .resizable()
                     .scaledToFill()
             } else {
                 pictureAsyncFetch(
-                    url: profile_metadata.profile_picture_url ?? profile_metadata.gravatar_url,
+                    localImage: profile_metadata.profile_picture,
+                    url: profile_metadata.gravatarURL,
                     profile_picture: true
                 )
             }
@@ -143,25 +161,39 @@ struct ProfilePicture: View {
     }
 }
 
+
 struct pictureAsyncFetch: View {
+    var localImage: Image? // Optional image that can be passed
     
     var url: URL?
     var profile_picture: Bool? = false
     
     var body: some View {
-        AsyncImage(url: url) { phase in
-            switch phase {
-            case .success(let image):
-                image
+        Group {
+            if let localImage = localImage { // If a local image is provided
+                localImage
                     .resizable()
                     .scaledToFill()
-            default:
+            } else if let url = url { // If no local image, fallback to AsyncImage
+                AsyncImage(url: url) { phase in
+                    switch phase {
+                    case .success(let image):
+                        image
+                            .resizable()
+                            .scaledToFill()
+                    default:
+                        Image(systemName: "photo.fill")
+                            .font(.system(size: 50))
+                            .padding()
+                    }
+                }
+                .id(url) // Ensures updates when URL changes
+            } else {
                 Image(systemName: "photo.fill")
                     .font(.system(size: 50))
                     .padding()
             }
         }
-        .id(url)
     }
 }
 
@@ -182,16 +214,12 @@ struct signOutToolBarItem: View {
         }
     }
     
-    // Adding comments to this, as it is my first time using async/await in Swift
     // 'async' allows this function to run without blocking other code.
+    // 'await' pauses execution of this function until the sign-out operation completes.
     func signOut() async {
         do {
-            
-            // 'await' pauses execution of this function until the sign-out (the await call) operation completes.
-            try await supabase.auth.signOut() // performs the actual sign-out on the server
-            
-            print("Sign Out Complete") // this code will only run after and when sign out is successful
-            
+            try await supabase.auth.signOut() 
+            print("Sign Out Complete") // Runs after successful sign out
         } catch {
             // Ideally, show an alert to the user rather than just printing.
             print(error.localizedDescription)
@@ -209,7 +237,7 @@ struct AllowPublicCollectionToggle: View {
                 .multilineTextAlignment(.leading)
                 .bold()
                 .foregroundStyle(.white)
-            Toggle(isOn: $profile_metadata.public_collection) {
+            Toggle(isOn: $profile_metadata.public_collection) { // Updated property name
                 
             }
         }
@@ -219,9 +247,9 @@ struct AllowPublicCollectionToggle: View {
                 .foregroundStyle(.background.secondary)
         }
         
-        .onChange(of: profile_metadata.public_collection) {
+        .onChange(of: profile_metadata.public_collection) { // Updated property name
             Task {
-                await profile_metadata.updateProfileMetadata(public_collection: profile_metadata.public_collection)
+                await profile_metadata.updateProfileMetadata(publicCollection: profile_metadata.public_collection) // Updated parameter
             }
         }
     }
@@ -237,7 +265,7 @@ struct AllowPublicListeningHistory: View {
                 .multilineTextAlignment(.leading)
                 .bold()
                 .foregroundStyle(.white)
-            Toggle(isOn: $profile_metadata.public_statistics) {
+            Toggle(isOn: $profile_metadata.public_statistics) { // Updated property name
                 
             }
         }
@@ -247,15 +275,19 @@ struct AllowPublicListeningHistory: View {
                 .foregroundStyle(.background.secondary)
         }
         
-        .onChange(of: profile_metadata.public_statistics) {
+        .onChange(of: profile_metadata.public_statistics) { // Updated property name
             Task {
-                await profile_metadata.updateProfileMetadata(public_statistics: profile_metadata.public_statistics)
+                await profile_metadata.updateProfileMetadata(publicStatistics: profile_metadata.public_statistics) // Updated parameter
             }
         }
     }
 }
 
-#Preview {
-    Profile()
-}
-
+//#Preview {
+//    @Previewable var profile_metadata: ProfileMetadata = ProfileMetadata()
+//
+//    Profile(profile_metadata: profile_metadata)
+//        .onAppear() {
+//            profile_metadata.userID = UUID(uuidString: "fa7a8e5c-488b-4f45-b11e-0b52bdf42b4b")!
+//        }
+//}

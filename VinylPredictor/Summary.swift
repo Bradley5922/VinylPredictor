@@ -9,169 +9,147 @@ import SwiftUI
 import MarqueeText
 
 struct Summary: View {
-    
+
     @EnvironmentObject var userCollection: AlbumCollectionModel
-    
-    @State var top_album: (Album, Int)?
-    @State var unloved_album: (Album, Int)?
+
+    // Array containing tuples of album and listening time
+    @State var albumData: [(Album, Int)] = []
     
     @State var total_time: Int?
-    
-    @State var artists_distinct: (Int, Int)? // (total, distinct)
-    @State var top_artist: (String, Int)?
-    
-    @State var top_genres: [(String, Int)]?
-    
-    // TODO: make it so if total listen time is under 30 mins, can't make summary
-    // TODO: when click artist give description from Apple Music
-    
+    @State var artists_distinct: (Int, Int)? // (total albums, distinct artists)
+    @State var top_artist: (String, Int)? // Top artist and listening time in minutes
+    @State var top_genres: [(String, Int)]? // Top genres and their listening times
+
     var body: some View {
         NavigationView {
-            
             VStack {
-                if computeTotalTimeListened(from: userCollection) < 1800 {
+                // If the total listening time is less than 30 minutes, don't show anything to stop it from breaking
+                if computeTotalTimeListened(from: albumData) < 1800 {
                     VStack {
                         Spacer()
-                        
                         Text("Summary only available when listening time is over 30 minutes")
                             .multilineTextAlignment(.center)
                             .font(.title)
                             .fontWeight(.light)
                             .padding(.vertical)
-                        
                         Spacer()
                     }
                 } else {
-                    
-                    // make sure data has been loaded and computed
-                    
-                    if let top_album = top_album,
-                       let unloved_album = unloved_album,
-                       let total_time = total_time,
+                    // continue only if all computations are available
+                    if let total_time = total_time,
                        let artists_distinct = artists_distinct,
                        let top_artist = top_artist,
-                       let top_genres = top_genres
-                    {
+                       let top_genres = top_genres {
                         
                         TopArtistBox(top_artist: top_artist)
                         
                         HStack(alignment: .top) {
                             VStack {
-                                TopAlbumBox(album: top_album.0, seconds: top_album.1)
+                                if let topAlbum = getTopAlbum(from: albumData) {
+                                    TopAlbumBox(album: topAlbum.0, seconds: topAlbum.1)
+                                }
+                                
                                 TotalCollection(artists_distinct: artists_distinct)
+                                
                                 RecommendationPageLink()
                             }
                             VStack {
-                                TotalListening(total_seconds: total_time)
-                                LowAlbumBox(album: unloved_album.0)
+                                TotalListening(total_seconds: total_time, albumData: albumData)
+                                
+                                if let unlovedAlbum = getUnlovedAlbum(from: albumData) {
+                                    LowAlbumBox(album: unlovedAlbum.0)
+                                }
+                                
                                 FavouriteGenreBox(top_genres: top_genres)
                             }
                         }
-                        
                     } else {
+                        // Show spinner while data is loading
                         VStack {
                             Spacer()
                             ProgressView().scaleEffect(2)
                             Spacer()
                         }
                     }
-                    
                     Spacer()
                 }
             }
-            
             .padding()
-            
-            .onAppear() {
-
-                if let top_X = computeTopAndUnlovedAlbums(from: userCollection) {
-                    let loved = top_X.0
-                    let unloved = top_X.1
-                    
-                    top_album = (loved.0, loved.1)
-                    unloved_album = (unloved.0, unloved.1)
-                }
+            .onAppear {
+                albumData = prepareAlbumData(from: userCollection)
+                print(albumData)
                 
-                total_time = computeTotalTimeListened(from: userCollection)
-                artists_distinct = computeTotalAlbumsDistinctArtists(from: userCollection)
-                top_artist = computeTopArtistMinutes(from: userCollection)
-                
-                top_genres = computeTopGenres(from: userCollection)
-                print(top_genres ?? "Error: top genre is nil")
+                total_time = computeTotalTimeListened(from: albumData)
+                artists_distinct = computeTotalAlbumsDistinctArtists(from: albumData)
+                top_artist = computeTopArtistMinutes(from: albumData)
+                top_genres = computeTopGenres(from: albumData)
             }
-//            .onDisappear() {
-//                top_album = nil
-//                unloved_album = nil
-//                
-//                total_time = nil
-//                artists_distinct = nil
-//                top_artist = nil
-//                top_genres = nil
-//            }
         }
     }
     
-    func computeTopAndUnlovedAlbums(from collection: AlbumCollectionModel) -> ((Album, Int), (Album, Int))? {
-        if let maxIndex = collection.listened_to_seconds.enumerated().max(by: { $0.element < $1.element })?.offset,
-           let minIndex = collection.listened_to_seconds.enumerated().min(by: { $0.element < $1.element })?.offset {
-            
-            let top_album = collection.array[maxIndex]
-            let top_time = collection.listened_to_seconds[maxIndex]
-            
-            let unloved_album = collection.array[minIndex]
-            let unloved_time = collection.listened_to_seconds[minIndex]
-            
-            return ((top_album, top_time), (unloved_album, unloved_time))
+    func prepareAlbumData(from collection: AlbumCollectionModel) -> [(Album, Int)] {
+        // Map over the enumerated collection to create an array of tuples
+        return collection.array.enumerated().map { (index, album) in
+            let time = collection.listened_to_seconds[index] // Get the listening time for the current album
+            return (album, time) // Create a tuple for each album containing the album and its listening time
         }
-        return nil
     }
-    
-    func computeTotalTimeListened(from collection: AlbumCollectionModel) -> Int {
-        return collection.listened_to_seconds.reduce(0, +)
+
+    func computeTotalTimeListened(from preparedData: [(Album, Int)] = []) -> Int {
+        // Sum the listening time from all albums in the albumData array
+        return preparedData.reduce(0) { $0 + $1.1 }
+        // $0 is the running total
+        // $1.1 [(album, time), therefore 1] is the listening time of the current album
     }
-    
-    func computeTopArtistMinutes(from collection: AlbumCollectionModel) -> (String, Int)? {
-        var artistListeningTime: [String: Int] = [:]
-        
-        for (index, album) in collection.array.enumerated() {
+
+    func computeTopArtistMinutes(from preparedData: [(Album, Int)] = []) -> (String, Int)? {
+        // Compute the total listening time for each artist
+        var artistListeningTime: [String: Int] = [:] // Dictionary to store artist name with their cumulative listening times
+        for (album, time) in preparedData {
             let artist = album.artist
-            let time = collection.listened_to_seconds[index]
-            
-            artistListeningTime[artist, default: 0] += time
+            artistListeningTime[artist, default: 0] += time // Add the listening time to the corresponding artist
         }
         
+        // Find the artist with the highest cumulative listening time
         if let topArtist = artistListeningTime.max(by: { $0.value < $1.value }) {
-            return (topArtist.key, topArtist.value / 60)
+            return (topArtist.key, topArtist.value / 60) // Return the artist name and their total time in minutes
         }
-        return nil
-    }
-    
-    func computeTotalAlbumsDistinctArtists(from collection: AlbumCollectionModel) -> (Int, Int) {
-        let totalAlbums = collection.array.count
-        let uniqueArtists = Set(collection.array.map(\.artist))
-        let totalArtists = uniqueArtists.count
         
-        return (totalAlbums, totalArtists)
+        return nil // fallback
     }
-    
-    func computeTopGenres(from collection: AlbumCollectionModel) -> [(String, Int)] {
-        var styleTimes: [String: Int] = [:]
 
-        // Go through all albums in the users collection
-        for (index, album) in collection.array.enumerated() {
-            // Get the listening time for said album
-            let time = collection.listened_to_seconds[index]
-            
-            // For each style (sub-genre in Discogs) in said  album, add the listening time
-            for style in album.styles {
-                styleTimes[style, default: 0] += time
+    func computeTotalAlbumsDistinctArtists(from preparedData: [(Album, Int)] = []) -> (Int, Int) {
+        // Compute the total number of albums and the total number of distinct artists
+        
+        let totalAlbums = preparedData.count // Count the total number of albums
+        let uniqueArtists = Set(preparedData.map { $0.0.artist }) // Set means only one of each element therefore, unique
+        let totalArtists = uniqueArtists.count // Count the number of unique artists
+        
+        return (totalAlbums, totalArtists) // Return the total number of albums and distinct artists
+    }
+
+    func computeTopGenres(from preparedData: [(Album, Int)] = []) -> [(String, Int)] {
+        // Compute the total listening time for each genre
+        var styleTimes: [String: Int] = [:] // Dictionary to store genres and their cumulative listening times
+        
+        for (album, time) in preparedData {
+            for style in album.styles { // Iterate through all genres (styles) of the current album
+                styleTimes[style, default: 0] += time // Add the listening time to the corresponding genre
             }
         }
+        
+        // Convert the dictionary to a sorted array of tuples, sorted by listening time in descending order
+        return styleTimes.sorted { $0.value > $1.value }
+    }
 
-        // Convert the dictionary to an array and sort by most-listened
-        let sortedStyles = styleTimes.sorted { $0.value > $1.value }
+    func getTopAlbum(from preparedData: [(Album, Int)] = []) -> (Album, Int)? {
+        // Find the album with the highest listening time
+        return preparedData.max(by: { $0.1 < $1.1 }) // Return the album and its listening time
+    }
 
-        return sortedStyles
+    func getUnlovedAlbum(from preparedData: [(Album, Int)] = []) -> (Album, Int)? {
+        // Find the album with the lowest listening time
+        return preparedData.min(by: { $0.1 < $1.1 }) // Return the album and its listening time
     }
 }
 
@@ -358,49 +336,142 @@ struct LowAlbumBox: View {
 struct TotalListening: View {
     
     let total_seconds: Int
-
+    let albumData: [(Album, Int)] // Album and listening time
+    
     var body: some View {
         let time = formatSecondsToTime(seconds: total_seconds)
         
-        RoundedRectangle(cornerRadius: 8)
-            .foregroundStyle(.background.secondary)
-            .frame(maxWidth: .infinity, maxHeight: 175)
-        
-            .overlay {
-                VStack {
-                    Text("Total Time")
-                        .font(.title2)
-                        .bold()
-                    Spacer()
-                    
-                    VStack(alignment: .leading) {
-                        Text("\(time.hours) Hours")
+        NavigationLink(destination: DetailedAlbumListView(albumData: albumData)) {
+            RoundedRectangle(cornerRadius: 8)
+                .foregroundStyle(.background.secondary)
+                .frame(maxWidth: .infinity, maxHeight: 175)
+                .overlay {
+                    VStack {
+                        Text("Total Time")
                             .font(.title2)
-                        Text("\(time.minutes) Minutes")
-                            .font(.title3)
-                            .foregroundColor(.secondary)
-                            .fontWeight(.light)
-                        Text("\(time.seconds) Seconds")
-                            .font(.headline)
-                            .fontWeight(.ultraLight)
-                            .foregroundColor(Color(UIColor.tertiaryLabel))
+                            .bold()
+                        Spacer()
+                        
+                        VStack(alignment: .leading) {
+                            Text("\(time.hours) Hours")
+                                .font(.title2)
+                            Text("\(time.minutes) Minutes")
+                                .font(.title3)
+                                .foregroundColor(.secondary)
+                                .fontWeight(.light)
+                            Text("\(time.seconds) Seconds")
+                                .font(.headline)
+                                .fontWeight(.ultraLight)
+                                .foregroundColor(Color(UIColor.tertiaryLabel))
+                        }
+                        Spacer()
                     }
-                    
-                    Spacer()
+                    .padding()
                 }
-                .padding()
-            }
+        }
+        .foregroundStyle(.primary)
     }
     
     func formatSecondsToTime(seconds: Int) -> (hours: Int, minutes: Int, seconds: Int) {
-        
         let hours = seconds / 3600
         let minutes = (seconds % 3600) / 60
         let remainingSeconds = seconds % 60
-        
         return (hours, minutes, remainingSeconds)
     }
 }
+
+struct DetailedAlbumListView: View {
+    let albumData: [(Album, Int)] // Album and listening time
+
+    var body: some View {
+        List {
+            
+            ForEach(listenedAlbums(), id: \.0.id) { album, time in
+                HStack {
+                    
+                    VStack(alignment: .leading) {
+                        Text(album.title)
+                            .font(.headline)
+                        Text(album.artist)
+                            .font(.subheadline)
+                            .foregroundColor(.secondary)
+                        
+                        Spacer()
+                        
+                        Text("\(formatSecondsToReadableTime(seconds: time))")
+                            .bold()
+                            .foregroundColor(.clear)
+                            .overlay(
+                                LinearGradient(
+                                    gradient: Gradient(colors: [.blue, .teal, .green]),
+                                    startPoint: .leading,
+                                    endPoint: .trailing
+                                )
+                            )
+                            .mask(
+                                Text("\(formatSecondsToReadableTime(seconds: time))")
+                                    .bold()
+                            )
+                    }
+                    
+                    Spacer()
+                    Spacer()
+                    
+                    pictureAsyncFetch(url: album.cover_image_URL)
+                        .frame(width: 90, height: 90)
+                        .background(Color.gray)
+                        .clipShape(RoundedRectangle(cornerRadius: 4))
+
+                    
+                }
+                .padding(.vertical)
+            }
+            
+            if hasUnlistenedAlbums() {
+                Section(header: Text("Unlistened Albums")) {
+                    ForEach(unlistenedAlbums(), id: \.0.id) { album, _ in
+                        VStack(alignment: .leading) {
+                            Text(album.title)
+                                .font(.headline)
+                            Text(album.artist)
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+            }
+        }
+        .navigationTitle("Breakdown")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+    
+    func hasUnlistenedAlbums() -> Bool {
+        return albumData.contains { $0.1 == 0 }
+    }
+    
+    func unlistenedAlbums() -> [(Album, Int)] {
+        return albumData.filter { $0.1 == 0 }
+    }
+    
+    func listenedAlbums() -> [(Album, Int)] {
+        return albumData.filter { $0.1 > 0 }.sorted { $0.1 > $1.1 }
+    }
+    
+    func formatSecondsToReadableTime(seconds: Int) -> String {
+        let hours = seconds / 3600
+        let minutes = (seconds % 3600) / 60
+        let seconds = seconds % 60
+
+        if hours > 0 {
+            // Show hours and minutes only if listening time exceeds an hour
+            return "\(hours)h \(minutes)m"
+        } else {
+            return "\(minutes)m \(seconds)s"
+        }
+    }
+}
+
+
 
 struct FavouriteGenreBox: View {
     
@@ -492,8 +563,21 @@ struct listGenres: View {
                 specific: genre
             )
             
+            
             Text("\(percentage) %")
                 .bold()
+                .foregroundColor(.clear)
+                .overlay(
+                    LinearGradient(
+                        gradient: Gradient(colors: [.blue, .teal, .green]),
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .mask(
+                    Text("\(percentage) %")
+                        .bold
+                )
         }
     }
 }
@@ -522,9 +606,7 @@ struct RecommendationPageLink: View {
     var body: some View {
         
         NavigationLink(destination:
-            Text("Coming Soon")
-            .font(.title)
-            .bold()
+            Recommendations()
         ) {
             RoundedRectangle(cornerRadius: 8)
                 .foregroundStyle(.background.secondary)

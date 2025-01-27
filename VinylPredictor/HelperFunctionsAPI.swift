@@ -11,6 +11,8 @@ import SwiftUI
 import MusicKit
 
 class AlbumCollectionModel: ObservableObject, Observable {
+    @Published var  user_id: UUID?
+    
     @Published var array: [Album] = []
     @Published var listened_to_seconds: [Int] = []
     
@@ -50,15 +52,18 @@ class AlbumCollectionModel: ObservableObject, Observable {
 }
 
 // modified from other applications of mine
-func getJSONfromURL(URL_string: String, authHeader: String) async -> Result<JSON, Error> {
+func getJSONfromURL(URL_string: String, authHeader: String? = nil) async -> Result<JSON, Error> {
     
     guard let url = URL(string: URL_string) else {
         return .failure(NSError(domain: "Invalid URL", code: 0, userInfo: nil))
     }
     
-    // Create a URLRequest and set the Authorisation (American boo) header
+    // Create a URLRequest and set the Authorisation (American spelling boo) header
     var request = URLRequest(url: url)
-    request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+    
+    if let authHeader = authHeader {
+        request.setValue(authHeader, forHTTPHeaderField: "Authorization")
+    }
     
     do {
         // Perform the network request
@@ -129,6 +134,8 @@ struct Album: Identifiable, Hashable, Comparable {
     var trackList: [Track]?
     
     var cover_image_URL: URL?
+    
+    var videoURLs: [URL]?
 
     init(json: JSON, full_data: Bool) {
         
@@ -136,7 +143,7 @@ struct Album: Identifiable, Hashable, Comparable {
         
         if full_data {
             /// PARSING: /releases/{id}
-
+            
             self.id = json["id"].intValue
             self.title = json["title"].stringValue
             
@@ -167,6 +174,16 @@ struct Album: Identifiable, Hashable, Comparable {
                 )
             }
             self.trackList = tempTracklist.isEmpty ? nil : tempTracklist
+            
+            // useful for masters on the recommendations page
+            self.videoURLs = {
+                guard let videosArray = json["videos"].array else {
+                    return [] // If the `videos` key doesn't exist, return an empty array
+                }
+                return videosArray.compactMap { video in
+                    video["uri"].url
+                }
+            }()
 
         } else {
             /// PARSING: /database/search?{...}
@@ -209,13 +226,15 @@ func separatedTitle(from text: String, separator: String = "-", maxLength: Int? 
     return (artist, title)
 }
 
-func searchDiscogs(searchTerm: String? = nil, barcode: String? = nil) async -> Result<[Album], Error> {
+func searchDiscogs(title: String? = nil, artist: String? = nil, barcode: String? = nil) async -> Result<[Album], Error> {
     // Determine the search query based on the presence of barcode or searchTerm
     let query: String
     if let barcode = barcode {
         query = "barcode=\(barcode)"
-    } else if let searchTerm = searchTerm {
-        query = "title=\(searchTerm)"
+    } else if let title = title {
+        query = "title=\(title)"
+    } else if let artist = artist {
+        query = "artist=\(artist)"
     } else {
         return .failure(NSError(domain: "No search term or barcode provided", code: 0, userInfo: nil))
     }
@@ -238,12 +257,13 @@ func searchDiscogs(searchTerm: String? = nil, barcode: String? = nil) async -> R
         // Combine results from both responses
         let combinedResults = json1["results"].arrayValue + json2["results"].arrayValue
         
-        // Remove duplicates based on album master ID
+        // Remove duplicates based on album master ID, but keep duplicates if master_id is 0
         let uniqueResults = Array(
-            Set(combinedResults.compactMap { $0["master_id"].intValue })
+            Set(combinedResults.compactMap { $0["master_id"].intValue != 0 ? $0["master_id"].intValue : nil })
         ).compactMap { id in
             combinedResults.first { $0["master_id"].intValue == id }
-        }
+        } + combinedResults.filter { $0["master_id"].intValue == 0 }
+        // Special edition vinyl don't have a master_id (value of 0), as they don't have a related master for example a live version of an album
         
         // Map JSON to Album objects
         searchResults = uniqueResults.map { Album(json: $0, full_data: false) }
@@ -255,9 +275,12 @@ func searchDiscogs(searchTerm: String? = nil, barcode: String? = nil) async -> R
     }
 }
 
-func discogsFetch(id: Int) async -> Result<Album, Error> {
+func discogsFetch(id: Int, is_master: Bool = false) async -> Result<Album, Error> {
+    var type: String = "releases"
+    if is_master { type = "masters" }
+    
     let response = await getJSONfromURL(
-        URL_string: "https://api.discogs.com/releases/\(id)",
+        URL_string: "https://api.discogs.com/\(type)/\(id)",
         authHeader: "Discogs  key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)"
     )
     
@@ -269,6 +292,56 @@ func discogsFetch(id: Int) async -> Result<Album, Error> {
         return .failure(error)
     }
     
+}
+
+struct discogsRelease {
+    var artist_name: String
+    var album_name: String
+    
+    // used for filtering
+    var type: String
+    var popularity: Int
+    
+    // used to get more data if required
+    var master_id: Int
+}
+
+func discogsFetchArtistReleases(id: Int) async -> Result<[discogsRelease], Error> {
+
+    let response = await getJSONfromURL(
+        URL_string: "https://api.discogs.com/artists/\(id)/releases?format=Vinyl&per_page=50",
+        authHeader: "Discogs  key=\(DISCOGS_API_KEY), secret=\(DISCOGS_API_SECRET)"
+    )
+    
+    switch response {
+        
+    case .success(let json):
+        let releasesArray = json["releases"].arrayValue
+        
+        let discogsReleases: [discogsRelease] = releasesArray
+            .filter { $0["type"].stringValue == "master" }
+            .map { releaseJSON in
+
+            let wants = releaseJSON["stats"]["community"]["in_wantlist"].intValue
+            let haves = releaseJSON["stats"]["community"]["in_collection"].intValue
+            let popularityScore = wants + haves
+            
+            return discogsRelease(
+                artist_name: releaseJSON["artist"].stringValue,
+                album_name: releaseJSON["title"].stringValue,
+                type: releaseJSON["type"].stringValue,
+                popularity: popularityScore,
+                
+                master_id: releaseJSON["id"].intValue
+            )
+        }
+        .sorted { $0.popularity > $1.popularity }
+        
+        return .success(discogsReleases)
+        
+    case .failure(let error):
+        return .failure(error)
+    }
 }
 
 func AppleMusicFetchAlbums(searchTerm: String) async -> Result<MusicKit.Album, Error> {

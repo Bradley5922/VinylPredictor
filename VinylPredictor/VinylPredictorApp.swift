@@ -51,33 +51,54 @@ struct VinylPredictorApp: App {
                 // prevents the landing page flashing quickly if there is a session
                 if (!(viewParameters.currentRoot == .testing)) {
                     
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 1) {
-                        Task {
-                            do {
-                                _ = try await supabase.auth.session
-                                
-                                // fetch the users collection, ready to be used
-                                if case .success(let collection) = await fetchCollection() {
-                                    let albums = collection.map { $0.0 }
-                                    userCollection.array = albums
-                                    userCollection.listened_to_seconds = collection.map { $0.1 }
-                                    
-                                    userCollection.loading = false
-                                }
-                                
-                                viewParameters.currentRoot = .home
-                            } catch {
-                                // No session, throws error
-                                print("Error: \(error.localizedDescription)")
+                    Task {
+                        // 1-second delay, as loading can be so fast the flash of loading screen is jarring
+                        try await Task.sleep(nanoseconds: 1_000_000_000) // 1 second
+
+                        do {
+                            // Verify the session
+                            _ = try await supabase.auth.session
+
+                            // Initialize the UI collections on the main thread
+                            await MainActor.run {
+                                userCollection.array = []
+                                userCollection.listened_to_seconds = []
+                                userCollection.loading = true
                             }
-                            
-                            holdingViewShow = false
+
+                            // Iterate over each album as it's fetched
+                            for try await (album, listenedToSeconds) in fetchCollection() {
+                                // Update the UI collections on the main thread
+                                await MainActor.run {
+                                    userCollection.array.append(album)
+                                    userCollection.listened_to_seconds.append(listenedToSeconds)
+                                }
+                            }
+
+                            // Once all albums are loaded, update the loading state and navigate
+                            await MainActor.run {
+                                userCollection.loading = false
+                                viewParameters.currentRoot = .home
+                            }
+
+                        } catch {
+                            // Handle any errors that occurred during fetching
+                            print("Error fetching collection: \(error.localizedDescription)")
+
+                            await MainActor.run {
+                                userCollection.loading = false
+                            }
                         }
 
+                        // Hide the holding view
+                        await MainActor.run {
+                            holdingViewShow = false
+                        }
                     }
                 }
             }
             .colorScheme(.dark) // Force dark mode on all views
+            
             .environmentObject(viewParameters)
             .environmentObject(shazamViewModel)
             .environment(userCollection)

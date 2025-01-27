@@ -187,276 +187,483 @@ func removeFromCollection(discogs_id: Int) async -> Result<CollectionItem?, Erro
     }
 }
 
-func fetchCollection(passed_user_id: UUID? = nil) async -> Result<[(Album, Int)], Error> {
+func fetchCollection(
+    passed_user_id: UUID? = nil,
+    searched_user_collection: AlbumCollectionModel? = nil
+    )
+    -> AsyncThrowingStream<(Album, Int), Error> {
+    
+    let fetchID = UUID() // Unique identifier for each call
+    print("fetchCollection called: \(fetchID)")
+    
+    return AsyncThrowingStream { continuation in
+        Task {
+            do {
+                // Determine the user ID, use passed_user_id or the current user's ID
+                let user_id: UUID
+                
+                if let passed_user_id = passed_user_id {
+                    user_id = passed_user_id
+                } else {
+                    // Fetch the current user ID from the session
+                    user_id = try await supabase.auth.session.user.id
+                }
+                
+                // Fetch collection items from the database
+                let collectionItems: [CollectionItem] = try await supabase
+                    .from("collection")
+                    .select()
+                    .eq("user_id", value: user_id)
+                    .execute()
+                    .value
+                
+                // Iterate through collection items and fetch album details
+                for item in collectionItems {
+                    
+                    // Check for task cancellation
+                    if Task.isCancelled {
+                        print("Task was cancelled during collection item processing.")
+                        continuation.finish()
+                        return
+                    }
+                    
+                    // Fetch album details from Discogs
+                    let result = await discogsFetch(id: item.discogs_id)
+                    
+                    switch result {
+                    case .success(let album):
+                        // Check for cancellation again before yielding
+                        if Task.isCancelled {
+                            print("Task was cancelled during album fetch.")
+                            continuation.finish()
+                            return
+                        }
+                        
+                        let listenedSeconds = item.listened_to_seconds ?? 0
+                        continuation.yield((album, listenedSeconds))
+                        print("Successfully fetched album: \(album.title)")
+                        
+                    case .failure(let error):
+                        // Log the error, and proceed to the next album
+                        print("Failed to fetch album for ID \(item.discogs_id): \(error.localizedDescription)")
+                    }
+                }
+                
+                // Signal that the stream has finished
+                continuation.finish()
+            } catch {
+                // If an error occurs, finish the stream with the error
+                if Task.isCancelled {
+                    print("Task was cancelled during error handling.")
+                } else {
+                    continuation.finish(throwing: error)
+                }
+            }
+        }
+    }
+}
+
+// MARK: User Recommendations
+
+struct UserRecommendations: Codable {
+    var user_id: UUID
+    var updated_at: String
+    
+    var recommendations: [Int]
+}
+
+func fetchRecommendations() async -> Result<UserRecommendations, Error> {
     do {
         var user_id: UUID
+        user_id = try await supabase.auth.session.user.id
         
-        if let passed_user_id = passed_user_id {
-            user_id = passed_user_id
-        } else {
-            // Fetching the current user ID from the session
-            user_id = try await supabase.auth.session.user.id
-        }
-        
-        var collectionAlbums: [(Album, Int)] = []
-        
-        // Fetch collection items from the database
-        let collectionItems: [CollectionItem] = try await supabase
-            .from("collection")
+        let recommendationsArray: [UserRecommendations] = try await supabase
+            .from("user_matrices")
             .select()
             .eq("user_id", value: user_id)
             .execute()
             .value
         
-        // Fetch details for each album and populate collectionAlbums
-        for item in collectionItems {
-            if case .success(let album) = await discogsFetch(id: item.discogs_id) {
-                collectionAlbums.append((album, item.listened_to_seconds ?? 0))
-            }
+        print(recommendationsArray)
+
+        // Handle the case where no recommendations exist for some reason
+        guard let recommendations = recommendationsArray.first, !recommendations.recommendations.isEmpty else {
+            return .failure(NSError(domain: "No recommendations found for the user", code: 404, userInfo: nil))
         }
-        
-        return .success(collectionAlbums)
+
+        return .success(recommendations)
     } catch {
         return .failure(error)
     }
 }
 
-// MARK: User Metadata
-
-struct ProfileMetadataModel: Codable, Identifiable {
-    let user_id: UUID
-    let email: String
+func call_recommendations_edge_function() async {
     
-    let public_collection: Bool
-    let public_statistics: Bool
-    
-    var starred_users: [UUID] = []
-    
-    let profile_picture_url: URL?
-    
-    var gravatar_url: URL { // allows for a more interesting default image
+    do {
+        let user_id = try await supabase.auth.session.user.id
         
-        if let emailData = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased().data(using: .utf8) {
-            let hashed = SHA256.hash(data: emailData).map { String(format: "%02x", $0) }.joined()
-            let personal_gravatar = URL(string: "https://www.gravatar.com/avatar/\(hashed)?s=800&d=robohash&r=x")!
-            
-            return personal_gravatar
-        }
-        
-        return URL(string: "https://www.gravatar.com/avatar/?s=800&d=robohash&r=x")!
-    }
-    
-    var id: UUID { // to conform to identifiable
-        return user_id
+        let _ = try await supabase.functions
+            .invoke(
+                "recalculate-user-matrix",
+                options: FunctionInvokeOptions(
+                    headers: [
+                        "x-user-id": user_id.uuidString
+                    ]
+                )
+            )
+    } catch {
+        print(error)
     }
 }
 
-class ProfileMetadata: ObservableObject {
-    // user data
+func fetchStarredAlbums() async -> [Int] {
+    do {
+        let user_id = supabase.auth.currentUser?.id
+        
+        let fetchedAlbums: [String: [Int]] = try await supabase
+            .from("user_matrices")
+            .select("starred_recs")
+            .eq("user_id", value: user_id)
+            .single()
+            .execute()
+            .value
+
+        return fetchedAlbums["starred_recs"] ?? []
+    } catch {
+        print("Failed to fetch starred albums: \(error)")
+    }
+    
+    return []
+}
+
+
+// MARK: User Profile
+class ProfileMetadata: ObservableObject, Identifiable, Codable, Hashable {
+    
+    static func == (lhs: ProfileMetadata, rhs: ProfileMetadata) -> Bool {
+        return lhs.user_id == rhs.user_id // Compare based on the unique user ID
+    }
+    func hash(into hasher: inout Hasher) {
+           hasher.combine(user_id) // Use the unique user ID for hashing
+    }
+    
+    // MARK: - Properties
     @Published var user_id: UUID?
     @Published var email: String?
+    @Published var display_name: String = "Display Name"
     
-    // privacy settings
     @Published var public_collection: Bool = false
     @Published var public_statistics: Bool = false
     
     @Published var starred_users: [UUID] = []
     
-    // profile picture data
-    @Published var profile_picture_url: URL?
-    @Published var gravatar_url: URL?
-    @Published var temporaryProfilePicture: UIImage?
-
-    // Fetch or create profile metadata
-    func fetch() async {
-        let result = await fetchProfileMetadata()
-        await MainActor.run {
-            switch result {
-            case .success(let fetchedData):
-                self.user_id = fetchedData.user_id
-                self.email = fetchedData.email
-                self.starred_users = fetchedData.starred_users
-                self.public_collection = fetchedData.public_collection
-                self.public_statistics = fetchedData.public_statistics
-                self.profile_picture_url = fetchedData.profile_picture_url
-                self.gravatar_url = fetchedData.gravatar_url
-            case .failure(let error):
-                print("Failed to fetch profile metadata: \(error)")
+    @Published var profile_picture: Image?
+    /// used when updating the profile picture, as not to upload and download the file on change
+    @Published var temp_profile_picture: UIImage?
+    
+    /// Computed Gravatar URL based on the user's email.
+    var gravatarURL: URL {
+        let trimmedEmail = (email ?? "").trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        
+        guard let emailData = trimmedEmail.data(using: .utf8) else {
+            return URL(string: "https://www.gravatar.com/avatar/?s=800&d=robohash&r=x")!
+        }
+        
+        let hashed = SHA256.hash(data: emailData).compactMap { String(format: "%02x", $0) }.joined()
+        
+        return URL(string: "https://www.gravatar.com/avatar/\(hashed)?s=800&d=robohash&r=x")!
+    }
+    
+    /// Conformance to `Identifiable` protocol.
+    var id: UUID? { user_id }
+    
+    // MARK: - Initialiser
+    
+    /// Default initialiser that fetches user data internally.
+    init() {
+        Task {
+            await fetchInitialData()
+        }
+    }
+    
+    // MARK: - Make it Codable
+    
+    /// Defines the keys (which are also in the db) used for encoding and decoding.
+    /// Excludes `profilePictureURL` as it's generated, not stored in the database.
+    enum CodingKeys: String, CodingKey {
+        case user_id
+        case email
+        case display_name
+        case public_collection
+        case public_statistics
+        case starred_users
+    }
+    
+    /// Initialises a new instance by decoding (from data returned from Supabase)
+    required init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        user_id = try container.decodeIfPresent(UUID.self, forKey: .user_id)
+        email = try container.decodeIfPresent(String.self, forKey: .email)
+        display_name = try container.decodeIfPresent(String.self, forKey: .display_name) ?? "Display Name"
+        public_collection = try container.decodeIfPresent(Bool.self, forKey: .public_collection) ?? false
+        public_statistics = try container.decodeIfPresent(Bool.self, forKey: .public_statistics) ?? false
+        starred_users = try container.decodeIfPresent([UUID].self, forKey: .starred_users) ?? []
+        // profilePictureURL is not decoded from data
+        
+        // Fetch the profile picture URL synchronously if userID is available
+        if user_id != nil {
+            let semaphore = DispatchSemaphore(value: 0)
+            var fetchError: Error?
+            
+            // Create a Task to perform the asynchronous fetch as synchronous
+            Task {
+                do {
+//                    try await fetchPictureURL()
+                    await fetchPicture()
+                } catch {
+                    fetchError = error
+                    print("Error fetching profile picture URL: \(error.localizedDescription)")
+                }
+                semaphore.signal()
+            }
+            
+            // Wait for the fetch to complete
+            semaphore.wait()
+            
+            // Throw error if fetching failed
+            if let error = fetchError {
+                throw error
             }
         }
     }
-
-    // Private function to fetch metadata
-    private func fetchProfileMetadata() async -> Result<ProfileMetadataModel, Error> {
+    
+    /// Encodes this instance to be uploaded to Supabase when needed
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encodeIfPresent(user_id, forKey: .user_id)
+        try container.encodeIfPresent(email, forKey: .email)
+        try container.encode(display_name, forKey: .display_name)
+        try container.encode(public_collection, forKey: .public_collection)
+        try container.encode(public_statistics, forKey: .public_statistics)
+        try container.encode(starred_users, forKey: .starred_users)
+    }
+    
+    // MARK: - Methods
+    
+    /// Fetches initial user data (userID and email) and then fetches profile metadata.
+    private func fetchInitialData() async {
         do {
+            let user = try await supabase.auth.session.user
+            let fetchedUserID = user.id
             
-            // Check if `user_id` is already set within object; if not, fetch it
-            let user_id: UUID
-            
-            if let existingUserID = self.user_id {
-                user_id = existingUserID // will be set for user search
-            } else {
-                // probably for current user profile
-                user_id = try await supabase.auth.session.user.id
+            await MainActor.run {
+                self.user_id = fetchedUserID
+                self.email = user.email
             }
-
             
-            // Try fetching existing profile metadata
-            do {
-                let fetchedData: ProfileMetadataModel = try await supabase
-                    .from("profile_metadata")
-                    .select()
-                    .eq("user_id", value: user_id)
-                    .single()
-                    .execute()
-                    .value
-
-                // Update profile picture URL
-                let updatedData = try await fetchPictureURL(for: fetchedData)
-                
-                return .success(updatedData)
-
-            } catch let error as PostgrestError where error.code == "PGRST116" {
-                
-                print("Couldn't find profile metadata, creating new one")
-                print(user_id)
-                // No existing metadata found, create a new one
-                let newProfile = await ProfileMetadataModel(
-                    user_id: user_id,
-                    email: try supabase.auth.session.user.email!,
-                    public_collection: false,
-                    public_statistics: false,
-                    profile_picture_url: nil
-                )
-
-                let inserted = try await supabase
-                    .from("profile_metadata")
-                    .insert(newProfile)
-                    .single()
-                    .execute()
-                
-
-                let updated = try await fetchPictureURL(for: newProfile)
-                
-                if inserted.response.statusCode != 201 {
-                    return .failure(PostgrestError(message: "Failed to insert new profile_metadata"))
-                }
-                
-                return .success(updated)
-
-            } catch {
-                print("Couldn't fetch profile metadata: \(error)")
-                return .failure(error)
+            // Now fetch the profile metadata
+            let result = await fetchProfile()
+            switch result {
+            case .success:
+                print("Profile metadata fetched successfully.")
+            case .failure(let error):
+                print("Failed to fetch profile metadata: \(error.localizedDescription)")
             }
         } catch {
-            print("Couldn't fetch profile metadata: \(error)")
+            print("Error fetching initial user data: \(error.localizedDescription)")
+        }
+    }
+    
+    /// Fetches the public URL for the profile picture from Supabase Storage.
+//    func fetchPictureURL() async throws {
+//        guard let userID = user_id else { return }
+//        
+//        let filePath = "\(userID)"
+//        let publicURL = try supabase.storage
+//            .from("profile_pictures")
+//            .getPublicURL(path: filePath)
+//        
+//        await MainActor.run {
+//            self.profile_picture_URL = publicURL
+//        }
+//    }
+    
+    func fetchPicture() async {
+        guard let user_id = user_id else { return }
+        
+        do {
+            let data = try await supabase.storage
+                .from("profile_pictures")
+                .download(path: "\(user_id)")
+            
+            // Convert data to UIImage and then to SwiftUI Image
+            if let uiImage = UIImage(data: data) {
+                print("Downloaded Successfully")
+                
+                await MainActor.run {
+                    self.profile_picture = Image(uiImage: uiImage)
+                }
+            } else {
+                print("Failed to convert data to UIImage")
+                self.profile_picture = nil
+            }
+        } catch {
+            print("Error downloading image: \(error)")
+            self.profile_picture = nil
+        }
+    }
+    
+    enum generalError: Error {
+        case noUserID
+    }
+    
+    /// Fetches or creates profile metadata from Supabase and updates properties.
+    func fetchProfile() async -> Result<Void, Error> {
+        guard let userID = user_id else {
+            return .failure(generalError.noUserID)
+        }
+        
+        do {
+            let fetchedData: ProfileMetadata = try await supabase
+                .from("user_metadata")
+                .select()
+                .eq("user_id", value: userID)
+                .single()
+                .execute()
+                .value
+            
+            // Update properties with fetched data
+            DispatchQueue.main.async {
+                self.email = fetchedData.email
+                self.display_name = fetchedData.display_name
+                self.public_collection = fetchedData.public_collection
+                self.public_statistics = fetchedData.public_statistics
+                self.starred_users = fetchedData.starred_users
+            }
+            
+            // Fetch the profile picture URL
+            await fetchPicture()
+            
+            return .success(())
+        } catch {
+            print("Error fetching profile metadata: \(error.localizedDescription)")
             return .failure(error)
         }
     }
-
-    private func fetchPictureURL(for profileMetadata: ProfileMetadataModel) async throws -> ProfileMetadataModel {
+    
+    /// Uploads a profile picture and updates the `profilePictureURL`.
+    func uploadProfilePicture(_ image: UIImage) async -> Result<Void, Error> {
+        guard let userID = user_id else {
+            return .failure(generalError.noUserID)
+        }
         
-        let filePath = "\(profileMetadata.user_id)"
-        let publicURL = try supabase.storage
-            .from("profile_pictures")
-            .getPublicURL(path: filePath)
-
-        // Return updated model with the public URL
-        return ProfileMetadataModel(
-            user_id: profileMetadata.user_id,
-            email: profileMetadata.email,
-            public_collection: profileMetadata.public_collection,
-            public_statistics: profileMetadata.public_statistics,
-            profile_picture_url: publicURL
-        )
-    }
-
-    // Upload a profile picture and update metadata
-    func uploadProfilePicture(_ image: UIImage) async -> Result<Bool, Error> {
         do {
-            let filePath = self.user_id!.uuidString // File name based on user ID
-
-            // Upload or replace the file in storage
+            
+            let filePath = userID.uuidString
             _ = try await supabase.storage
                 .from("profile_pictures")
                 .upload(
                     filePath,
-                    data: image.jpegData(compressionQuality: 1.0)!,
+                    data: image.jpegData(compressionQuality: 0.8)!,
                     options: FileOptions(
-                        cacheControl: "10",
-                        contentType: "image/jpg",
+                        cacheControl: "3600",
+                        contentType: "image/jpeg",
                         upsert: true
                     )
                 )
-
-            return .success(true)
+            
+            await fetchPicture()
+            return .success(())
         } catch {
+            print("Failed to upload profile picture: \(error.localizedDescription)")
             return .failure(error)
         }
     }
     
-    struct updateObject: Encodable {
-        var public_collection: Bool
-        var public_statistics: Bool
-        var starred_users: [UUID]
-    }
-    
-    func updateProfileMetadata(public_collection: Bool? = nil, public_statistics: Bool? = nil, singular_stared_profile: UUID? = nil) async -> Result<Bool, Error> {
-        print("Updating profile metadata...")
+    /// Updates the profile metadata in Supabase, only updates what is provided
+    ///   - publicCollection: Optional new value for `publicCollection`.
+    ///   - publicStatistics: Optional new value for `publicStatistics`.
+    ///   - singularStarredProfile: Optional user ID to add or remove from `starredUsers`.
+    ///   - displayName: Optional new value for `displayName`.
+    func updateProfileMetadata(
+        publicCollection: Bool? = nil,
+        publicStatistics: Bool? = nil,
+        singularStarredProfile: UUID? = nil,
+        displayName: String? = nil
+    ) async -> Result<Void, Error> {
+        guard let userID = user_id else {
+            return .failure(generalError.noUserID)
+        }
         
         do {
-
-            var updatedStaredProfile: [UUID] = self.starred_users
-            if let singular_stared_profile = singular_stared_profile {
-                if updatedStaredProfile.contains(singular_stared_profile) {
-                    // user already stared, therefore a call to this function implies removal
-                    updatedStaredProfile.removeAll(where: { $0 == singular_stared_profile })
+            var updatedStarredUsers = starred_users
+            
+            if let singularStarredProfile = singularStarredProfile {
+                if let index = updatedStarredUsers.firstIndex(of: singularStarredProfile) {
+                    updatedStarredUsers.remove(at: index)
                 } else {
-                    // user not already stared, therefore add
-                    updatedStaredProfile.append(singular_stared_profile)
+                    updatedStarredUsers.append(singularStarredProfile)
                 }
             }
             
-            let update = updateObject(
-                public_collection: public_collection ?? self.public_collection,
-                public_statistics: public_statistics ?? self.public_statistics,
-                starred_users: updatedStaredProfile
+            let update = UpdateObject(
+                public_collection: publicCollection ?? self.public_collection,
+                public_statistics: publicStatistics ?? self.public_statistics,
+                starred_users: updatedStarredUsers,
+                display_name: displayName ?? self.display_name
             )
             
-            // Update the metadata in the database
-            let updatedMetadata: ProfileMetadataModel = try await supabase
-                .from("profile_metadata")
+            let updatedMetadata: ProfileMetadata = try await supabase
+                .from("user_metadata")
                 .update(update)
-                .eq("user_id", value: self.user_id!)
+                .eq("user_id", value: userID)
                 .select()
                 .single()
                 .execute()
                 .value
             
-            print(updatedMetadata)
-            
-            await MainActor.run {
+            // Update local properties with updated data
+            DispatchQueue.main.async {
+                self.email = updatedMetadata.email
+                self.display_name = updatedMetadata.display_name
                 self.public_collection = updatedMetadata.public_collection
                 self.public_statistics = updatedMetadata.public_statistics
                 self.starred_users = updatedMetadata.starred_users
             }
-
-            return .success(true)
+            
+            return .success(())
         } catch {
-            print("Updating metadata failed: \(error)")
+            print("Updating metadata failed: \(error.localizedDescription)")
             return .failure(error)
         }
     }
     
+    // MARK: - Supporting Structures
+    
+    /// Structure used to encode update data for profile metadata.
+    private struct UpdateObject: Encodable {
+        var public_collection: Bool
+        var public_statistics: Bool
+        var starred_users: [UUID]
+        var display_name: String
+        
+        enum CodingKeys: String, CodingKey {
+            case public_collection
+            case public_statistics
+            case starred_users
+            case display_name
+        }
+    }
 }
 
-func fetchStaredProfiles() async -> Result<[ProfileMetadataModel], Error> {
+
+func fetchStaredProfiles() async -> Result<[ProfileMetadata], Error> {
     do {
         let current_user_id = try await supabase.auth.session.user.id
 
         // Fetch stared users (of the current user)
         let staredUserIDsResult: [String: [UUID]] = try await supabase
-            .from("profile_metadata")
+            .from("user_metadata")
             .select("starred_users")
             .eq("user_id", value: current_user_id)
             .single()
@@ -467,14 +674,12 @@ func fetchStaredProfiles() async -> Result<[ProfileMetadataModel], Error> {
         let staredUserIDs: [UUID] = staredUserIDsResult["starred_users"] ?? []
 
         // Get associated profile data from the stared user array 
-        let profiles: [ProfileMetadataModel] = try await supabase
-            .from("profile_metadata")
+        let profiles: [ProfileMetadata] = try await supabase
+            .from("user_metadata")
             .select()
             .in("user_id", values: staredUserIDs)
             .execute()
             .value
-        
-        print(profiles)
         
         return .success(profiles)
     } catch {
@@ -483,16 +688,18 @@ func fetchStaredProfiles() async -> Result<[ProfileMetadataModel], Error> {
 }
 
 
-func searchProfiles(searchTerm: String) async -> Result<[ProfileMetadataModel], Error> {
+func searchProfiles(searchTerm: String) async -> Result<[ProfileMetadata], Error> {
     do {
         let current_user_id = try await supabase.auth.session.user.id
 
         // `ilike` operator for case-insensitive matching
-        let profiles: [ProfileMetadataModel] = try await supabase
-            .from("profile_metadata")
+        let profiles: [ProfileMetadata] = try await supabase
+            .from("user_metadata")
             .select()
-            .filter("email", operator: "ilike", value: "%\(searchTerm)%")
-            .neq("user_id", value: current_user_id) // remove the current user from the list
+            // search by email or display name
+            .or("email.ilike.%\(searchTerm)%,display_name.ilike.%\(searchTerm)%")
+            .neq("user_id", value: current_user_id) // Exclude current user
+            .limit(10)
             .execute()
             .value
         

@@ -164,42 +164,135 @@ struct ProcessingOverlay: View {
 
 struct songRow: View {
     
+    @EnvironmentObject var Shazam: ShazamViewModel
+    
     let song: DetectedSong
     @State private var showingNoDiscogsAlert = false
     
+    @State private var overrideRequired: Bool = false
+    @State private var detectedSongOverrideRequired: DetectedSong?
+    
     var body: some View {
         HStack {
-            VStack(alignment: .leading) {
-                Text(song.appleMusic.title)
-                    .font(.headline)
-                    .foregroundStyle(.primary)
-                
-                Text(song.album_title())
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-            }
+            SongInfoView(song: song)
             
             Spacer()
             
             if song.discogsAlbum == nil {
-                Button {
-                    showingNoDiscogsAlert.toggle()
-                } label: {
-                    Image(systemName: "info.circle")
-                }
+                InfoButton(showingAlert: $showingNoDiscogsAlert)
             }
         }
-        
         .foregroundStyle((song.discogsAlbum == nil) ? .orange : .primary)
-        
         .transition(.identity)
-        
-        .alert(isPresented: $showingNoDiscogsAlert) {
-            Alert(
-                title: Text("Album Not Found in Collection"),
-                message: Text("This song has been detected but doesn't match any albums in your collection. To include it in your listening history next time, make sure the corresponding album is added to your collection.\n\nNote: Matching sometimes fails due to differences in album titles, etc."),
-                dismissButton: .default(Text("Got it!"))
+        .alert(
+            "Album Not Found in Collection",
+            isPresented: $showingNoDiscogsAlert
+        ) {
+            AlertButtons(
+                song: song,
+                overrideRequired: $overrideRequired,
+                detectedSongOverrideRequired: $detectedSongOverrideRequired
             )
+        } message: {
+            Text("This song has been detected but doesn't seem to match any albums in your collection. This could be a mistake.")
+        }
+        .sheet(isPresented: $overrideRequired) {
+            OverrideSheet(
+                song: song,
+                overrideRequired: $overrideRequired,
+                detectedSongOverrideRequired: $detectedSongOverrideRequired
+            )
+        }
+    }
+}
+
+struct SongInfoView: View {
+    let song: DetectedSong
+    
+    var body: some View {
+        VStack(alignment: .leading) {
+            Text(song.appleMusic.title)
+                .font(.headline)
+                .foregroundStyle(.primary)
+            
+            Text(song.album_title())
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+}
+
+struct InfoButton: View {
+    @Binding var showingAlert: Bool
+    
+    var body: some View {
+        Button {
+            showingAlert.toggle()
+        } label: {
+            Image(systemName: "info.circle")
+        }
+    }
+}
+
+struct AlertButtons: View {
+    let song: DetectedSong
+    @Binding var overrideRequired: Bool
+    @Binding var detectedSongOverrideRequired: DetectedSong?
+    
+    var body: some View {
+        Button("Override", role: .destructive) {
+            print("Override of song requested")
+            detectedSongOverrideRequired = song
+            overrideRequired = true
+        }
+        Button("Got it!", role: .cancel) {}
+    }
+}
+
+struct OverrideSheet: View {
+    @EnvironmentObject var Shazam: ShazamViewModel
+    
+    var song: DetectedSong
+    
+    @Binding var overrideRequired: Bool
+    @Binding var detectedSongOverrideRequired: DetectedSong?
+    
+    var body: some View {
+        
+        NavigationView {
+            
+            VStack(alignment: .leading) {
+                Text("Please select an album from your collection to assign this song to...")
+                    .padding(.horizontal)
+                
+                List(Shazam.userCollection ?? []) { album in
+                    Button {
+                        updateDetectedSong(album: album)
+                        
+                        overrideRequired = false
+                        detectedSongOverrideRequired = nil
+                    } label: {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(album.title)
+                                .font(.headline)
+                                .bold()
+                            Text(album.artist)
+                                .font(.subheadline)
+                                .foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4)
+                    }
+                    .foregroundStyle(.primary)
+                }
+            }
+            .navigationTitle("Override Detection")
+        }
+    }
+    
+    private func updateDetectedSong(album: Album) {
+        // Locate the song by its ID in Shazam.detectedSongs
+        if let index = Shazam.detectedSongs.firstIndex(where: { $0.id == song.id }) {
+            Shazam.detectedSongs[index].discogsAlbum = album
         }
     }
 }
@@ -452,13 +545,10 @@ struct SpinningVinyl: View {
     
     // Mock ViewModel with sample data
     let shazamViewModel = ShazamViewModel()
-    shazamViewModel.detectedSongs = sampleSongs
 
     // Listening session with pre-populated tracklistHistory
     return Listening_Session()
+        .environmentObject(AlbumCollectionModel())
         .environmentObject(shazamViewModel)
-        .onAppear {
-            // Populate tracklistHistory on appear
-            shazamViewModel.detectedSongs = sampleSongs
-        }
+    
 }

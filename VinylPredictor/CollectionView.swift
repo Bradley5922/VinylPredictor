@@ -61,11 +61,9 @@ struct ListViewContent: View {
     
     @EnvironmentObject var userCollection: AlbumCollectionModel
     
-    @State var searchText: String = ""
-    @State var searchResults: [Album] = []
-    
-    // used for debouncing
-    // last active search Task so we can cancel it if needed
+    @State private var searchText: String = ""
+    @State private var searchScope: SearchScope = .title
+    @State private var searchResults: [Album] = []
     @State private var searchTask: Task<(), Never>? = nil
     
     var body: some View {
@@ -73,6 +71,7 @@ struct ListViewContent: View {
         
         List {
             barcodeRowView()
+            
             if userCollection.array.isEmpty && searchText.isEmpty {
                 NoAlbumsInfo()
                     .listRowBackground(Color.yellow.opacity(0.5))
@@ -87,39 +86,72 @@ struct ListViewContent: View {
                 }
             }
         }
-        // add a artist text box to allow granular search if needed
         .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
         
+        .searchScopes($searchScope) {
+            Text("Album Title").tag(SearchScope.title)
+            Text("Artist").tag(SearchScope.artist)
+        }
+        
         .onChange(of: searchText) {
-            // Cancel any pending task
-            searchTask?.cancel()
+            performSearchDebounced()
+        }
+    }
+    
+    // Filter results based on selected scope
+    private func filteredResults(collection: [Album]) -> [Album] {
+        collection.filter { album in
+            switch searchScope {
+            case .title:
+                return searchText.isEmpty || album.title.localizedCaseInsensitiveContains(searchText)
+            case .artist:
+                return searchText.isEmpty || album.artist.localizedCaseInsensitiveContains(searchText)
+            }
+        }
+    }
+    
+    // Debounced search logic
+    private func performSearchDebounced() {
+        // Cancel any pending task
+        searchTask?.cancel()
+        
+        // "Debounce" search to only make request when user stops typing
+        searchTask = Task {
+            // Debounce for 1 second
+            try? await Task.sleep(nanoseconds: 1_000_000_000)
+            if Task.isCancelled { return }
             
-            // If user clears text, clear results
-            if searchText.isEmpty {
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+            
+            if query.isEmpty || query.count <= 2 {
                 searchResults = []
                 return
             }
             
-            // "Debounce" search to only make request when user stops typing
-            searchTask = Task {
-                // Debounce for 1 seconds
-                try? await Task.sleep(nanoseconds: 1_000_000_000)
-                
-                // Boilerplate for debounding
-                if Task.isCancelled { return }
-                
-                if searchText.count > 2 {
-                    if case .success(let results) = await searchDiscogs(searchTerm: searchText) {
-                        searchResults = results
-                    } else {
-                        searchResults = []
-                    }
+            // Perform search based on the current scope
+            switch searchScope {
+            case .title:
+                if case .success(let results) = await searchDiscogs(title: searchText) {
+                    searchResults = results
+                } else {
+                    searchResults = []
+                }
+            case .artist:
+                if case .success(let results) = await searchDiscogs(artist: searchText) {
+                    searchResults = results
                 } else {
                     searchResults = []
                 }
             }
         }
     }
+
+}
+
+// Enum for search scope
+enum SearchScope: String {
+    case title
+    case artist
 }
 
 struct barcodeRowView: View {
@@ -324,9 +356,12 @@ struct InCollectionButton: View {
     }
 }
 
-//#Preview {
-//    @Previewable @State var sampleCollection: [Album] = []
-//    
-//    AlbumDetail(selected_album_id: 2823404
-//}
-//
+#Preview {
+    let mockCollection = AlbumCollectionModel()
+    mockCollection.loading = false
+
+    return CollectionView()
+        .environmentObject(mockCollection)
+}
+
+

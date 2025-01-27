@@ -12,8 +12,8 @@ struct UserSearch: View {
     
     /// Environment object containing metadata about the currently logged-in user.
     @EnvironmentObject var current_user_profile_metadata: ProfileMetadata
-    /// Array holding (other users) metadata for the  user's starred profiles.
-    @State var staredProfiles: [ProfileMetadataModel] = []
+    /// Array holding other users' metadata for the user's starred profiles.
+    @State var staredProfiles: [ProfileMetadata] = []
     
     @State var loading: Bool = false
 
@@ -23,7 +23,7 @@ struct UserSearch: View {
                 Spacer()
                 
                 ProgressView()
-                    .scaleEffect(2)
+                    .scaleEffect(2.5)
                 
                 Spacer()
             } else {
@@ -39,103 +39,177 @@ struct UserSearch: View {
                 case .success(let profiles):
                     // Update the local array and environment object with the starred users' IDs.
                     staredProfiles = profiles
-                    current_user_profile_metadata.starred_users = staredProfiles.map { $0.user_id }
+                    current_user_profile_metadata.starred_users = staredProfiles.map { $0.user_id! }
                     
                     loading = false
                 case .failure(let error):
                     print(error)
                     staredProfiles = []
+                    
                     loading = false
                 }
             }
         }
-        .navigationTitle("User Search")
+        .navigationTitle("Other Users")
         .navigationBarTitleDisplayMode(.inline)
     }
 }
 
+/// Displays a list of profile metadata, including starred users and search results.
 struct listProfileMetadata: View {
     
-    /// Environment object containing metadata about the currently logged-in user.
     @EnvironmentObject var current_user_profile_metadata: ProfileMetadata
     
     @State var searchText: String = ""
-    @State var results: [ProfileMetadataModel] = [] // result of searching profiles
+    @State private var searchTask: Task<Void, Never>?
+    @State var loading_search_results = false
+    @State var results: [ProfileMetadata] = []
     
-    // all the stared profiles, from the previous view
-    @Binding var staredProfiles: [ProfileMetadataModel]
-    
+    @State var recommended_users: [ProfileMetadata] = []
+    @Binding var staredProfiles: [ProfileMetadata]
+
     var body: some View {
         List {
             switch (searchText.isEmpty, staredProfiles.isEmpty, results.isEmpty) {
             case (false, _, true):
-                
-                // Search text is not empty but results are empty
-                Text("No results")
-                    .foregroundStyle(.secondary)
-                    .font(.title2)
-                    .fontWeight(.light)
-                    .italic()
-                    .listRowBackground(Color.red.opacity(0.5))
-                
-            case (true, true, _):
-                // No search text and no starred users
-                
-                VStack(alignment: .leading) {
-                    Text("You have no stared users :(")
+                if loading_search_results {
+                    Text("Loading...")
                         .foregroundStyle(.secondary)
                         .font(.title2)
-                    
-                    Text("Search for users with the box above...")
-                        .foregroundStyle(.secondary)
-                        .font(.title3)
                         .fontWeight(.light)
+                        .italic()
+                        .listRowBackground(Color.blue.opacity(0.5))
+                } else {
+                    Text("No results from searching...")
+                        .foregroundStyle(.secondary)
+                        .font(.title2)
+                        .fontWeight(.light)
+                        .italic()
+                        .listRowBackground(Color.red.opacity(0.5))
                 }
-                .listRowBackground(Color.yellow.opacity(0.5))
-                
-            default:
-                // We have at least some starred users or search results
+            case (true, true, _):
+                if recommended_users != [] {
+                    Section(header: Text("Recommended Users")) {
+                        itterator(results: recommended_users)
+                    }
+                }
+                Section(header: Text("Stared Users")) {
+                    VStack(alignment: .leading) {
+                        Text("You have no starred users :(")
+                            .foregroundStyle(.secondary)
+                            .font(.title2)
+                        Text("Search for users with the box above...")
+                            .foregroundStyle(.secondary)
+                            .font(.title3)
+                            .fontWeight(.light)
+                    }
+                    .listRowBackground(Color.yellow.opacity(0.5))
+                }
+            case (true, false, _):
                 Section(header: Text("Stared Users")) {
                     itterator(results: staredProfiles)
                 }
-                
-                Section(header: Text("Search Results")) {
-                    itterator(results: results)
+                if recommended_users != [] {
+                    Section(header: Text("Recommended Users")) {
+                        itterator(results: recommended_users)
+                    }
                 }
+            default:
+                itterator(results: results)
             }
+        }
+        .task {
+            recommended_users = await fetch_recommended_users()
         }
         .onChange(of: searchText) {
-            Task {
-                let fetchSearch = await searchProfiles(searchTerm: searchText)
-                
-                switch fetchSearch {
-                case .success(let profiles):
-                    results = profiles
-                case .failure(let error):
-                    print(error)
-                    results = []
-                }
+            performSearchDebounced()
+        }
+        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
+    }
+
+    private func performSearchDebounced() {
+        searchTask?.cancel()
+        searchTask = Task {
+            // Debounce for 1 second
+            try? await Task.sleep(nanoseconds: 500_000_000)
+            if Task.isCancelled { return }
+
+            let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+
+            if query.isEmpty || query.count <= 2 {
+                results = []
+                return
+            }
+
+            results = []
+
+            let fetchSearch = await searchProfiles(searchTerm: query)
+
+            switch fetchSearch {
+            case .success(let profiles):
+                results = profiles
+                loading_search_results = false
+            case .failure(let error):
+                print(error)
+                loading_search_results = false
+                results = []
             }
         }
-        .offset(y: -10) // weird gap in the layout fix
-        .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
+    }
+
+    func fetch_recommended_users() async -> [ProfileMetadata] {
+        let cloud_function_URL = "https://user-recs-1087873563961.europe-west1.run.app"
+        let user_id = current_user_profile_metadata.user_id!
+
+        let result = await getJSONfromURL(
+            URL_string: "\(cloud_function_URL)?user_id=\(user_id)"
+        )
+
+        switch result {
+        case .success(let json):
+            let rec_user_ids: [String] = json.arrayValue.compactMap { $0["user_id"].string?.uppercased() }
+            let starred_users_string_array = current_user_profile_metadata.starred_users.map { $0.uuidString }
+            let filtered_rec_users = rec_user_ids.filter { !starred_users_string_array.contains($0) }
+
+            do {
+                let profiles: [ProfileMetadata] = try await supabase
+                    .from("user_metadata")
+                    .select()
+                    .in("user_id", values: filtered_rec_users)
+                    .execute()
+                    .value
+
+                return profiles
+            } catch {
+                print("Error, fetching recommended profiles from Supabase", error)
+            }
+        case .failure(let error):
+            print(error)
+        }
+
+        return []
     }
 }
 
-/// Used in the list list to show profiles
+/// Iterates over a list of profiles and displays them in the list.
 struct itterator: View {
     
-    let results: [ProfileMetadataModel]
+    @EnvironmentObject var current_user_profile_metadata: ProfileMetadata
+    
+    let results: [ProfileMetadata]
     
     var body: some View {
         ForEach(results) { result in
+            
+            let starred_user  = current_user_profile_metadata.starred_users.contains(result.user_id!)
             
             NavigationLink(destination: searchedUserProfile(user_profile_metadata: result)) {
                 
                 HStack(spacing: 15) {
                     
                     pictureAsyncFetch(
-                        url: result.profile_picture_url ?? result.gravatar_url,
+                        localImage: result.profile_picture,
+                        url: result.gravatarURL,
                         profile_picture: true
                     )
                     .frame(width: 80, height: 80)
@@ -144,11 +218,19 @@ struct itterator: View {
                     
                     VStack(alignment: .leading) {
                         
-                        Text(result.email)
-                            .font(.headline)
-                            .bold()
+                        HStack(alignment: .center) {
+                            Text(result.display_name)
+                                .font(.headline)
+                                .bold()
+                            
+                            if starred_user {
+                                Image(systemName: "star.fill")
+                                    .foregroundStyle(.yellow)
+                                    .font(.headline)
+                            }
+                        }
                         
-                        Text("Lorem ipsum dolor sit amet, consectetur adipiscing elit.")
+                        Text(result.email ?? "hello@world.com")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .italic()
@@ -159,80 +241,82 @@ struct itterator: View {
     }
 }
 
-/// Displays the profile for a searched user, navigated to from the list
+/// Displays the profile for a searched user, navigated to from the list.
 struct searchedUserProfile: View {
     
     /// Environment object containing metadata about the CURRENTLY logged-in user.
     @EnvironmentObject var current_user_profile_metadata: ProfileMetadata
     
-    /// Metadata for the searched user
-    let user_profile_metadata: ProfileMetadataModel
+    /// Metadata for the searched user.
+    let user_profile_metadata: ProfileMetadata
     
-    /// State object to hold the searched user's collection of albums, passed to other views via environment
+    /// State object to hold the searched user's collection of albums, passed to other views via environment.
     @StateObject var searched_user_collection: AlbumCollectionModel = AlbumCollectionModel()
     
     /// Tracks whether the current user has starred this searched user.
     @State var stared_user: Bool = false
-
-    /// Fake username, created via using start of email
-    var emailPrefix: String {
-        let email = user_profile_metadata.email.capitalized
-        let atIndex = email.firstIndex(of: "@")!
-        return String(email[..<atIndex])
-    }
     
     var body: some View {
         ScrollView {
             VStack {
                 
                 pictureAsyncFetch(
-                    url: user_profile_metadata.profile_picture_url ?? user_profile_metadata.gravatar_url,
+                    localImage: user_profile_metadata.profile_picture,
+                    url: user_profile_metadata.gravatarURL,
                     profile_picture: true
                 )
                 .frame(width: 175, height: 175)
                 .background(Color.gray)
                 .clipShape(Circle())
                 
-                Text(emailPrefix)
+                Text(user_profile_metadata.display_name)
                     .font(.title)
                     .bold()
                 
                 Divider()
                 
                 VStack(alignment: .leading, spacing: 8) {
-                    if searched_user_collection.loading {
-                        Spacer()
-                        ProgressView()
-                            .scaleEffect(2)
-                        Spacer()
-                    } else {
-                        VStack {
-                            HStack {
-                                Text("\(emailPrefix)'s Vinyl Collection")
-                                    .font(.headline)
-                                
-                                Spacer()
-                                
-                                if user_profile_metadata.public_collection {
-                                    NavigationLink(destination: showDetailsCollection()) {
-                                        Text("Show Detail")
-                                            .font(.headline)
-                                    }
-                                }
-                            }
-                            Profile_Collection(user_profile_metadata: user_profile_metadata)
-                        }
-                        .padding(.vertical)
-                        
-                        VStack {
-                            HStack {
-                                Text("\(emailPrefix)'s Listening Statistics")
-                                    .font(.headline)
-                                Spacer()
-                            }
+//                        VStack(alignment: .center) {
+//                            Spacer()
+//
+//                            ProgressView()
+//                                .scaleEffect(2)
+//                                .padding(.top, 100)
+//
+//                            Text("This can take a while...")
+//                                .font(.title3)
+//                                .foregroundStyle(.secondary)
+//                                .italic()
+//                                .padding()
+//
+//                            Spacer()
+//                        }
+                    VStack {
+                        HStack {
+                            Text("\(user_profile_metadata.display_name)'s Vinyl Collection")
+                                .font(.headline)
                             
-                            Profile_Statistics(user_profile_metadata: user_profile_metadata)
+                            Spacer()
+                            
+//                                if user_profile_metadata.public_collection {
+//                                    NavigationLink(destination: showDetailsCollection()) {
+//                                        Text("Show Detail")
+//                                            .font(.headline)
+//                                    }
+//                                }
                         }
+                        Profile_Collection(user_profile_metadata: user_profile_metadata)
+                    }
+                    .padding(.vertical)
+                    
+                    VStack {
+                        HStack {
+                            Text("\(user_profile_metadata.display_name)'s Listening Statistics")
+                                .font(.headline)
+                            Spacer()
+                        }
+
+                        Profile_Statistics(user_profile_metadata: user_profile_metadata)
                     }
                 }
                 Spacer()
@@ -243,9 +327,15 @@ struct searchedUserProfile: View {
                     Button {
                         stared_user.toggle()
                         Task {
-                            await current_user_profile_metadata.updateProfileMetadata(
-                                singular_stared_profile: user_profile_metadata.user_id
+                            let updateResult = await current_user_profile_metadata.updateProfileMetadata(
+                                singularStarredProfile: user_profile_metadata.user_id
                             )
+                            switch updateResult {
+                            case .success:
+                                print("Starred status updated.")
+                            case .failure(let error):
+                                print("Failed to update starred status: \(error.localizedDescription)")
+                            }
                         }
                     } label: {
                         Image(systemName: stared_user ? "star.fill" : "star")
@@ -254,17 +344,35 @@ struct searchedUserProfile: View {
                 }
             }
             .onAppear {
-                print(current_user_profile_metadata.starred_users)
-                print(user_profile_metadata.user_id)
-                stared_user = current_user_profile_metadata.starred_users.contains(user_profile_metadata.user_id)
                 
+                stared_user = current_user_profile_metadata.starred_users.contains(user_profile_metadata.user_id!)
+
                 Task {
-                    if case .success(let collection) = await fetchCollection(passed_user_id: user_profile_metadata.user_id) {
-                        let albums = collection.map { $0.0 }
-                        searched_user_collection.array = albums
-                        searched_user_collection.listened_to_seconds = collection.map { $0.1 }
+                    do {
+                        // Initialise the UI collections if necessary
+                        searched_user_collection.array = []
+                        searched_user_collection.listened_to_seconds = []
                         
-                        searched_user_collection.loading = false
+                        // Iterate over each album as it's fetched
+                        for try await (album, listenedToSeconds) in fetchCollection(passed_user_id: user_profile_metadata.user_id) {
+                            // Update the UI collections on the main thread
+                            await MainActor.run {
+                                searched_user_collection.array.append(album)
+                                searched_user_collection.listened_to_seconds.append(listenedToSeconds)
+                            }
+                        }
+                        
+                        // Once all albums are loaded, update the loading state
+                        await MainActor.run {
+                            searched_user_collection.loading = false
+                        }
+                    } catch {
+                        // Handle any errors that occurred during fetching
+                        print("Error fetching collection: \(error.localizedDescription)")
+                        
+                        await MainActor.run {
+                            searched_user_collection.loading = false
+                        }
                     }
                 }
             }
@@ -278,7 +386,7 @@ struct searchedUserProfile: View {
 struct Profile_Collection: View {
     
     /// Metadata for the user whose collection is being displayed.
-    let user_profile_metadata: ProfileMetadataModel
+    let user_profile_metadata: ProfileMetadata
     
     /// Environment object for the searched user's collection data.
     @EnvironmentObject var searched_user_collection: AlbumCollectionModel
@@ -303,7 +411,7 @@ struct Profile_Collection: View {
                     .foregroundStyle(.background.secondary)
             }
             
-        } else if albums.isEmpty {
+        } else if albums.isEmpty && (searched_user_collection.loading == false) {
 
             VStack {
                 
@@ -329,9 +437,21 @@ struct Profile_Collection: View {
                         VStack {
                             pictureAsyncFetch(url: album.cover_image_URL)
                                 .frame(width: 100, height: 100)
+                                .clipped()
                                 .background(Color.gray)
                                 .shadow(radius: 10)
                         }
+                    }
+                    
+                    if searched_user_collection.loading {
+                        VStack {
+                            ProgressView()
+                                .scaleEffect(2)
+                        }
+                        .padding()
+                        .frame(width: 100, height: 100)
+                        .background(Color.gray)
+                        .shadow(radius: 10)
                     }
                     
                 }
@@ -366,7 +486,7 @@ struct showDetailsCollection: View {
             }
         } else {
             List {
-                ForEach(albums) { album in
+                ForEach(albums, id: \.id) { album in
                     
                     NavigationLink(
                         destination: AlbumDetail(
@@ -404,7 +524,7 @@ struct Profile_Statistics: View {
     @EnvironmentObject var searched_user_collection: AlbumCollectionModel
     
     /// Metadata for the user whose collection is being displayed.
-    let user_profile_metadata: ProfileMetadataModel
+    let user_profile_metadata: ProfileMetadata
     
     @State private var topAlbums: (Album, Int)?
     @State private var topArtistMinutes: (String, Int)?
@@ -414,13 +534,33 @@ struct Profile_Statistics: View {
     var body: some View {
         let albums = searched_user_collection.array
         
-        // empty or user has less than 30 mins listening history
-        if albums.isEmpty || searched_user_collection.listened_to_seconds.reduce(0, +) < 1800   {
+        // Empty or user has less than 30 mins listening history
+        if searched_user_collection.loading {
+            VStack {
+                Spacer()
+                
+                ProgressView()
+                    .scaleEffect(1.5)
+                    .padding()
+                Text("Loading Summary")
+                    .foregroundStyle(.secondary)
+                
+                Spacer()
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 100)
+            .padding()
+            
+            .background {
+                RoundedRectangle(cornerRadius: 8)
+                    .foregroundStyle(.background.secondary)
+            }
+        } else if albums.isEmpty || searched_user_collection.listened_to_seconds.reduce(0, +) < 1800 {
             VStack {
                 
                 Spacer()
                 
-                // if no albums in collection, then there is no listening history
+                // If no albums in collection, then there is no listening history
                 Text("No Listening History")
                     .fontWeight(.ultraLight)
                     .font(.title)
@@ -435,7 +575,7 @@ struct Profile_Statistics: View {
                 RoundedRectangle(cornerRadius: 8)
                     .foregroundStyle(.background.secondary)
             }
-        }  else if !user_profile_metadata.public_statistics {
+        } else if !user_profile_metadata.public_statistics {
             VStack {
                 
                 Spacer()
@@ -458,7 +598,7 @@ struct Profile_Statistics: View {
             
             VStack {
                 
-                if let top_album = topAlbums { /// will show data after computed, using the `searched_user_collection`
+                if let top_album = topAlbums { // Will show data after computed, using the `searched_user_collection`
                     
                     HStack(alignment: .center, spacing: 20) {
                         pictureAsyncFetch(url: top_album.0.cover_image_URL)
@@ -495,7 +635,7 @@ struct Profile_Statistics: View {
                     .padding(.vertical)
                 }
                 
-                if let top_artist = topArtistMinutes { /// will show data after computed, using the `searched_user_collection`
+                if let top_artist = topArtistMinutes { // Will show data after computed, using the `searched_user_collection`
                     
                     HStack(spacing: 20) {
                         
@@ -561,7 +701,9 @@ struct Profile_Statistics: View {
     
     /// Loads and computes top album/artist statistics for the current user.
     private func loadStatistics() {
-        self.topAlbums = Summary().computeTopAndUnlovedAlbums(from: searched_user_collection)?.0
-        self.topArtistMinutes = Summary().computeTopArtistMinutes(from: searched_user_collection)
+        let prepared_stats = Summary().prepareAlbumData(from: searched_user_collection)
+        
+        self.topAlbums = Summary().getTopAlbum(from: prepared_stats)
+        self.topArtistMinutes = Summary().computeTopArtistMinutes(from: prepared_stats)
     }
 }
